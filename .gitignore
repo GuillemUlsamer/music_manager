@@ -1,0 +1,4 @@
+credentials.json
+__pycache__/
+*.mp3
+.ds_store
