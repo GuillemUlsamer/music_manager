@@ -1,10 +1,11 @@
 const DISCOGS_TOKEN = "bJGcsTjCeCfrDHmLxCEqbLCipDUAvLliBesoOkHy";
-const USER_AGENT = "AlwaysHardcoreSheets/1.0";
+const USER_AGENT = "MusicManagerApp/1.0";
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Always Hardcore')
+  ui.createMenu('music_manager')
     .addItem('Import Discogs Release', 'showImportDialog')
+    .addItem('Set up', 'showSetupDialog')
     .addToUi();
 }
 
@@ -21,6 +22,59 @@ function showImportDialog() {
     const sheetName = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName();
     importDiscogsRelease(sheetName, releaseId);
   }
+}
+
+function showSetupDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const result = ui.prompt(
+    'Set up sheets',
+    'Enter the number of volumes:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (result.getSelectedButton() == ui.Button.OK) {
+    const volNum = result.getResponseText();
+    const sheetFileName = SpreadsheetApp.getActiveSpreadsheet();
+    setupSheet(sheetFileName, volNum);
+  }
+}
+
+function setupSheet(sheetFileName, volNum) {
+  for (var i = 1; i <= volNum; ++i){
+    let newName = "V " + i;
+    sheet = sheetFileName.getSheetByName(newName);
+
+    if(sheet == null) 
+      sheet = sheetFileName.insertSheet(newName);
+
+    // Clear A:G (por si acaso)
+    sheet.getRange("A:G").clearContent();
+    sheet.getRange("A:G").removeCheckboxes();
+    sheet.getRange("A:G").clearFormat();
+
+    const headerColA = "Track #";
+    sheet.setColumnWidth(1, 60);
+    const headerColB = "Artist";
+    sheet.setColumnWidth(2, 300);
+    const headerColC = "Title";
+    sheet.setColumnWidth(3, 400);
+    const headerColD = "Duration";
+    sheet.setColumnWidth(4, 80);
+    const headerColE = "Cumulative";
+    sheet.setColumnWidth(5, 80);
+    const headerColF = "Add to Playlist";
+    sheet.setColumnWidth(6, 100);
+    const headerColG = "Notes";
+    sheet.setColumnWidth(5, 150);
+
+    let headers = [];
+    headers.push([
+      headerColA, headerColB, headerColC, headerColD, 
+      headerColE, headerColF, headerColG
+    ])
+    
+    sheet.getRange(1,1,1,7).setValues(headers);
+  } 
 }
 
 function importDiscogsRelease(sheetName, releaseId) {
@@ -70,6 +124,8 @@ function importDiscogsRelease(sheetName, releaseId) {
 
     if (rows.length > 0) {
       sheet.getRange(2, 1, rows.length, 7).setValues(rows);
+      sheet.getRange(2, 1, rows.length, 7).activate();
+      SpreadsheetApp.getActive().getActiveRangeList().setHorizontalAlignment('left');
       sheet.getRange("D2:E").setNumberFormat("[h]:mm:ss");
       const checkboxRange = sheet.getRange(2, 6, rows.length, 1);
       checkboxRange.insertCheckboxes();
