@@ -1,0 +1,4 @@
+gspread
+google-auth
+yt-dlp
+mutagen
