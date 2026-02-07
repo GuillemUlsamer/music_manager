@@ -54,6 +54,7 @@ def sanitize_filename(name):
     name = name.replace('"', "'")
     return re.sub(r'[<>:"/\\|?*]', '', name).strip()
 
+# para limpiar el formato de duración, que tenga sentido
 def parse_duration(duration_val):
     if not duration_val: return 0
     try:
@@ -63,6 +64,7 @@ def parse_duration(duration_val):
     except ValueError: pass
     return 0
 
+# Esto es para comparar el titulo de la canción que quiero con lo que he encontrado
 def check_title_similarity(request_title, result_title):
     def normalize(s):
         s = s.replace('`', "'").replace('’', "'")
@@ -83,9 +85,12 @@ def check_title_similarity(request_title, result_title):
     
     if not req_w: return True 
     common = req_w.intersection(res_w)
+    # si al menos la mitad de las palabras coinciden, lo consideramos suficientemente similar
     return (len(common) / len(req_w)) >= 0.5
 
 def download_track(artist, title, output_path, expected_duration_sec=0, tolerance=60):
+    # 1. Busco la canción
+
     # Definition of search attempts
     # We use multiple YouTube search variations as the primary strategy.
     # The 'Deep' search pulls 50 results to find obscure/unblocked uploads.
@@ -95,12 +100,11 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
         {'source': 'YouTube (Deep)',  'prefix': 'ytsearch50:', 'query': f"{artist} {title} audio"}, 
     ]
     
-    # Ensure int for formatting
+    # 2. Que el tiempo de la canción tenga sentido
     exp_sec_int = int(expected_duration_sec)
     duration_fmt = f"{exp_sec_int//60}:{exp_sec_int%60:02d}"
     
-    # 1. Identify Specific Remix Request
-    # Look for terms in brackets like (Stunned Guys Remix)
+    # 3. Miro si es remix para no equivocarme
     specific_remix = None
     remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
     if remix_match:
@@ -111,9 +115,10 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
     remix_keywords = ['remix', 'bootleg', 'edit', 'mix', 'refix', 'rmx']
     is_generic_remix_req = any(x in title.lower() for x in remix_keywords)
 
-    # This was previously adding to a 'failed_urls' blacklist.
+    # lista de urls que han dado error al descargar, para no volver a intentarlas
     failed_urls = set()
 
+    # 4. Busco de distintos modos en youtube
     for attempt in attempts:
         print(f"\n   > Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
 
@@ -170,6 +175,7 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                              if diff > 5: penalty = 100
 
                     final_diff = diff + penalty
+                    # Solo consideramos candidatos que estén dentro de la tolerancia ajustada y que tengan títulos similares
                     if final_diff <= current_tolerance:
                         if check_title_similarity(title, val_title):
                             viable_candidates.append({
@@ -179,6 +185,7 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                                 'duration': val_dur
                             })
 
+                # De la lista de candidatos viables, ordeno por el que más se acerca al tiempo esperado
                 viable_candidates.sort(key=lambda x: x['score'])
 
                 for candidate in viable_candidates:
@@ -233,23 +240,29 @@ def tag_file(filepath, artist, title, album):
         print(f"Error tagging {filepath}: {e}")
 
 def process_sheet(client, spreadsheet_name, base_download_dir):
+    # 1. Abro el spreadsheet (si existe)
     try:
         sheet = client.open(spreadsheet_name)
     except gspread.exceptions.SpreadsheetNotFound:
         print(f"Spreadsheet '{spreadsheet_name}' not found.")
         return
 
+    # 2. Creo la carpeta de descargas si no existe
     if not os.path.exists(base_download_dir):
         os.makedirs(base_download_dir)
 
+    # 3. Por cada pagina que tenga el spreadsheet, miro las filas y veo cuales estan checkeadas para descargar o eliminar
     for worksheet in sheet.worksheets():
         rows = worksheet.get_all_values()
+        # 3.1 Si no hay filas o solo hay una (header), salto esta hoja
         if len(rows) < 2: continue
         
+        # 3.2 Por cada fila (excepto la primera que es el header), miro a ver que hago
         for i in range(1, len(rows)):
             row = rows[i]
             row_num = i + 1
             
+            # Miro si la fila tiene cancion (si no hay checkbox, no hay cancion, asi que la salto)
             if len(row) <= COL_CHECKBOX: continue
             
             artist = row[COL_ARTIST]
@@ -264,6 +277,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
             file_path = os.path.join(base_download_dir, safe_filename)
             mp3_path = file_path + ".mp3"
 
+            # Si esta checkeada y no esta descargada, la descargo
             if is_checked and "Downloaded" not in status:
                 print(f"[{worksheet.title}] Downloading: {filename}")
                 worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
@@ -271,6 +285,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 exp_seconds = parse_duration(duration_str)
                 final_path = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60)
                 
+                # si ha funcionado, pongo los tags
                 if final_path:
                     tag_file(final_path, artist, title, worksheet.title)
                     worksheet.update_cell(row_num, COL_STATUS + 1, "Downloaded")
@@ -279,6 +294,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                     worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
                     print("   > Failed.")
 
+            # Si no esta checkeada pero esta descargada, la borro
             elif not is_checked and "Downloaded" in status and "Deleting" not in status:
                 print(f"[{worksheet.title}] Deleting: {filename}")
                 if os.path.exists(mp3_path):
@@ -298,6 +314,7 @@ def main():
     # Determine paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_music_dir = os.path.dirname(script_dir)
+    # Esto es para que la carpeta de descargas se llame igual que la spreadsheet, pero en mayúsculas y con " PLAYLIST" al final
     download_dir = os.path.join(base_music_dir, str.upper(args.name) + " PLAYLIST")
 
     print("\n\nEjecutando El creador de playlists")
@@ -314,7 +331,7 @@ def main():
     except Exception as e:
         print(f"Global Error: {e}")
         
-    print("Finished :)")
+    print("\nFinished :)")
 
 if __name__ == "__main__":
     main()
