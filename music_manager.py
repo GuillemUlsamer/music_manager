@@ -1,15 +1,21 @@
 import os
 import re
+import warnings
+
+# Suppress Google Auth EOL warnings
+warnings.filterwarnings('ignore', message='.*Python version.*past its end of life.*')
+
 import gspread
 from google.oauth2.service_account import Credentials
+import sys
+import argparse
 import yt_dlp
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 
 # --- CONFIGURATION ---
 CREDENTIALS_FILE = 'credentials.json'
-SPREADSHEET_NAME = "Always hardcore"
-BASE_DOWNLOAD_DIR = r"c:\Users\Leonor\Desktop\MUSIC\ALWAYS HARDCORE PLAYLIST"
+# SPREADSHEET_NAME & BASE_DOWNLOAD_DIR are now handled via arguments
 
 # Columns (0-indexed)
 COL_ARTIST = 1
@@ -226,15 +232,15 @@ def tag_file(filepath, artist, title, album):
     except Exception as e:
         print(f"Error tagging {filepath}: {e}")
 
-def process_sheet(client):
+def process_sheet(client, spreadsheet_name, base_download_dir):
     try:
-        sheet = client.open(SPREADSHEET_NAME)
+        sheet = client.open(spreadsheet_name)
     except gspread.exceptions.SpreadsheetNotFound:
-        print(f"Spreadsheet '{SPREADSHEET_NAME}' not found.")
+        print(f"Spreadsheet '{spreadsheet_name}' not found.")
         return
 
-    if not os.path.exists(BASE_DOWNLOAD_DIR):
-        os.makedirs(BASE_DOWNLOAD_DIR)
+    if not os.path.exists(base_download_dir):
+        os.makedirs(base_download_dir)
 
     for worksheet in sheet.worksheets():
         rows = worksheet.get_all_values()
@@ -255,7 +261,7 @@ def process_sheet(client):
             filename = f"{artist} - {title}"
             safe_filename = sanitize_filename(filename)
             
-            file_path = os.path.join(BASE_DOWNLOAD_DIR, safe_filename)
+            file_path = os.path.join(base_download_dir, safe_filename)
             mp3_path = file_path + ".mp3"
 
             if is_checked and "Downloaded" not in status:
@@ -285,15 +291,26 @@ def process_sheet(client):
                 worksheet.update_cell(row_num, COL_STATUS + 1, "")
 
 def main():
+    parser = argparse.ArgumentParser(description="Music Manager")
+    parser.add_argument("name", help="Name of the spreadsheet (and output folder)")
+    args = parser.parse_args()
+
+    # Determine paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_music_dir = os.path.dirname(script_dir)
+    download_dir = os.path.join(base_music_dir, str.upper(args.name) + " PLAYLIST")
+
     print("\n\nEjecutando El creador de playlists")
-    print(f"Guardando en: {BASE_DOWNLOAD_DIR}")
+    print(f"Spreadsheet: {args.name}")
+    print(f"Guardando en: {download_dir}")
+
     client = setup_gspread()
     if not client:
         return
 
     try:
         print("\nMirando a ver que quieres...")
-        process_sheet(client)
+        process_sheet(client, args.name, download_dir)
     except Exception as e:
         print(f"Global Error: {e}")
         
