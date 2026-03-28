@@ -59,7 +59,36 @@ Para facilitar la importación de música:
 1.  Abre tu hoja de cálculo en Google Sheets.
 2.  Ve a **Extensiones > Apps Script**.
 3.  Copia el contenido del archivo `playlistHelper.gs` en el editor.
-4.  Recarga la hoja. Aparecerá un menú personalizado para importar releases de Discogs usando su ID.
+pon la biblioteca : 1efgoS3Xk_cBVN14eYvrbJngBN8EuUARaOQsqbWSH-eFU6SWdwZR4Tv9N
+   
+function onOpen() {
+  General_music_manager.onOpen();
+}
+
+function showImportDialog() {
+  General_music_manager.showImportDialog();
+}
+
+function showSetupDialog() {
+  General_music_manager.showSetupDialog();
+}
+
+function setupSheet(sheetFileName, volNum) {
+  General_music_manager.setupSheet(sheetFileName, volNum);
+}
+
+function importDiscogsRelease(sheetName, releaseId) {
+  General_music_manager.importDiscogsRelease(sheetName, releaseId);
+}
+
+function durationToSeconds(duration) {
+  General_music_manager.durationToSeconds(duration);
+}
+
+function secondsToSheetsDuration(seconds) {
+  General_music_manager.secondsToSheetsDuration(seconds);
+}
+5.  Recarga la hoja. Aparecerá un menú personalizado para importar releases de Discogs usando su ID.
 
 ## Uso
 
