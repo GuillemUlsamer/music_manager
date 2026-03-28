@@ -1,5 +1,6 @@
 const DISCOGS_TOKEN = "bJGcsTjCeCfrDHmLxCEqbLCipDUAvLliBesoOkHy";
 const USER_AGENT = "MusicManagerApp/1.0";
+const RELEASES_SHEET_NAME = "Releases";
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
@@ -40,9 +41,12 @@ function showSetupDialog() {
 }
 
 function setupSheet(sheetFileName, volNum) {
+  const releasesSheet = getOrCreateReleasesSheet(sheetFileName);
+  initializeReleasesSheetHeaders(releasesSheet);
+
   for (var i = 1; i <= volNum; ++i){
     let newName = "V " + i;
-    sheet = sheetFileName.getSheetByName(newName);
+    let sheet = sheetFileName.getSheetByName(newName);
 
     if(sheet == null) 
       sheet = sheetFileName.insertSheet(newName);
@@ -50,7 +54,7 @@ function setupSheet(sheetFileName, volNum) {
     // Clear A:G (por si acaso)
     sheet.getRange("A:G").clearContent();
     sheet.getRange("A:G").removeCheckboxes();
-    sheet.getRange("A:G").clearFormat();
+    sheet.getRange("A:K").clearFormat();
 
     const headerColA = "Track #";
     sheet.setColumnWidth(1, 60);
@@ -74,6 +78,11 @@ function setupSheet(sheetFileName, volNum) {
     ])
     
     sheet.getRange(1,1,1,7).setValues(headers);
+    // Store per-sheet metadata in hidden columns I:K.
+    sheet.getRange("I1").setValue("Album");
+    sheet.getRange("J1").setValue("Year");
+    sheet.getRange("K1").setValue("CoverURL");
+    sheet.hideColumns(8, 4);
   } 
 }
 
@@ -93,6 +102,14 @@ function importDiscogsRelease(sheetName, releaseId) {
 
     const data = JSON.parse(response.getContentText());
     const tracks = data.tracklist;
+    const albumName = data.title || "";
+    const releaseYear = data.year || "";
+    const coverUrl = (data.images && data.images.length > 0 && data.images[0].uri) ? data.images[0].uri : "";
+
+    // Persist metadata on the track sheet for the Python downloader.
+    sheet.getRange("I1").setValue(albumName);
+    sheet.getRange("J1").setValue(releaseYear);
+    sheet.getRange("K1").setValue(coverUrl);
 
     let rows = [];
     let cumulativeSeconds = 0;
@@ -130,9 +147,44 @@ function importDiscogsRelease(sheetName, releaseId) {
       const checkboxRange = sheet.getRange(2, 6, rows.length, 1);
       checkboxRange.insertCheckboxes();
     }
+
+    appendReleaseToCatalog(albumName, releaseYear, coverUrl);
   } catch (e) {
     SpreadsheetApp.getUi().alert("Error importing: " + e.toString());
   }
+}
+
+function getOrCreateReleasesSheet(spreadsheet) {
+  let releasesSheet = spreadsheet.getSheetByName(RELEASES_SHEET_NAME);
+  if (!releasesSheet) {
+    releasesSheet = spreadsheet.insertSheet(RELEASES_SHEET_NAME, 0);
+  }
+  spreadsheet.setActiveSheet(releasesSheet);
+  spreadsheet.moveActiveSheet(1);
+  return releasesSheet;
+}
+
+function initializeReleasesSheetHeaders(releasesSheet) {
+  releasesSheet.getRange("A1").setValue("NAME OF THE ALBUM");
+  releasesSheet.getRange("B1").setValue("YEAR");
+  releasesSheet.getRange("C1").setValue("COVER");
+  releasesSheet.setColumnWidth(1, 320);
+  releasesSheet.setColumnWidth(2, 100);
+  releasesSheet.setColumnWidth(3, 220);
+}
+
+function appendReleaseToCatalog(albumName, releaseYear, coverUrl) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const releasesSheet = getOrCreateReleasesSheet(spreadsheet);
+  initializeReleasesSheetHeaders(releasesSheet);
+
+  const targetRow = Math.max(releasesSheet.getLastRow() + 1, 2);
+  const imageFormula = coverUrl
+    ? '=IMAGE("' + coverUrl.replace(/"/g, '""') + '")'
+    : "";
+
+  releasesSheet.getRange(targetRow, 1, 1, 3).setValues([[albumName, releaseYear, imageFormula]]);
+  releasesSheet.setRowHeight(targetRow, 180);
 }
 
 function durationToSeconds(duration) {
