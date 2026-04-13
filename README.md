@@ -88,6 +88,7 @@ function durationToSeconds(duration) {
 function secondsToSheetsDuration(seconds) {
   General_music_manager.secondsToSheetsDuration(seconds);
 }
+
 5.  Recarga la hoja. Aparecerá un menú personalizado para importar releases de Discogs usando su ID.
 
 ## Uso
