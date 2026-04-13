@@ -6,6 +6,19 @@ Si una canción de tu sheet de google esta marcada, la busca y la descarga de Yo
 
 Incluye un script de Google Apps Script (`playlistHelper.gs`) para importar tracklists directamente desde Discogs a la hoja de cálculo. 
 
+## Features
+- Sync music library with Google Sheets
+- Download tracks from YouTube automatically
+- Convert to MP3 and add metadata
+- Import playlists from Discogs
+
+## Tech Stack
+- Python
+- Google Sheets API
+- yt-dlp
+- FFmpeg
+- Google Apps Script
+
 ## Requisitos Previos
 
 1.  **Python 3.9+** instalado.
