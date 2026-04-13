@@ -120,8 +120,3 @@ depende de desde donde ejecutes el programa, yo tengo una carpeta en mi ordenado
 *   `music_manager.py`: Script principal de Python.
 *   `playlistHelper.gs`: Script para Google Sheets (Google Apps Script).
 *   `requirements.txt`: Lista de librerías de Python necesarias.
-*   `credentials.json`: (Ignorado por git) Tu clave privada de Google.
-
-## Notas de Seguridad
-
-El archivo `credentials.json` contiene claves privadas. **Nunca** subas este archivo a un repositorio público (ya está incluido en `.gitignore`).
