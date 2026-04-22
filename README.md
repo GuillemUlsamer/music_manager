@@ -74,33 +74,25 @@ Para facilitar la importación de música:
 3.  Copia el contenido del archivo `playlistHelper.gs` en el editor.
 pon la biblioteca : 1efgoS3Xk_cBVN14eYvrbJngBN8EuUARaOQsqbWSH-eFU6SWdwZR4Tv9N
    
-function onOpen() {
-  General_music_manager.onOpen();
-}
+function onOpen() { General_music_manager.onOpen(); }
 
-function showImportDialog() {
-  General_music_manager.showImportDialog();
-}
+function showImportDialog() { General_music_manager.showImportDialog(); }
 
-function showSetupDialog() {
-  General_music_manager.showSetupDialog();
-}
+function showSetupDialog() { General_music_manager.showSetupDialog(); }
 
-function setupSheet(sheetFileName, volNum) {
-  General_music_manager.setupSheet(sheetFileName, volNum);
-}
+function setupSheet(sheetFileName, volNum) { General_music_manager.setupSheet(sheetFileName, volNum); }
 
-function importDiscogsRelease(sheetName, releaseId) {
-  General_music_manager.importDiscogsRelease(sheetName, releaseId);
-}
+function importDiscogsRelease(sheetName, releaseId) { General_music_manager.importDiscogsRelease(sheetName, releaseId); }
 
-function durationToSeconds(duration) {
-  General_music_manager.durationToSeconds(duration);
-}
+function getOrCreateReleasesSheet(spreadsheet) { General_music_manager.getOrCreateReleasesSheet(spreadsheet); }
 
-function secondsToSheetsDuration(seconds) {
-  General_music_manager.secondsToSheetsDuration(seconds);
-}
+function initializeReleasesSheetHeaders(releasesSheet) { General_music_manager.initializeReleasesSheetHeaders(releasesSheet); }
+
+function appendReleaseToCatalog(albumName, releaseYear, coverUrl) { General_music_manager(albumName, releaseYear, coverUrl); }
+
+function durationToSeconds(duration) { General_music_manager.durationToSeconds(duration); }
+
+function secondsToSheetsDuration(seconds) { General_music_manager.secondsToSheetsDuration(seconds); }
 
 5.  Recarga la hoja. Aparecerá un menú personalizado para importar releases de Discogs usando su ID.
 
