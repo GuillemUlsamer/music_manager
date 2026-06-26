@@ -86,7 +86,28 @@ def check_title_similarity(request_title, result_title):
     if not req_w: return True 
     common = req_w.intersection(res_w)
     # si al menos la mitad de las palabras coinciden, lo consideramos suficientemente similar
-    return (len(common) / len(req_w)) >= 0.5
+    return (len(common) / len(req_w)) >= 0.6
+
+def normalize_for_match(s):
+    s = s.replace('`', "'").replace('’', "'").lower()
+    return re.sub(r'[^a-z0-9]+', ' ', s).strip()
+
+def is_strong_track_match(request_artist, request_title, result_title):
+    req_title_norm = normalize_for_match(request_title)
+    req_full_norm = normalize_for_match(f"{request_artist} {request_title}")
+    result_norm = normalize_for_match(result_title)
+
+    if not req_title_norm or not result_norm:
+        return False
+
+    title_in_result = req_title_norm in result_norm
+    full_in_result = req_full_norm in result_norm if req_full_norm else False
+
+    req_words = set(req_title_norm.split())
+    res_words = set(result_norm.split())
+    overlap_ratio = (len(req_words.intersection(res_words)) / len(req_words)) if req_words else 0
+
+    return full_in_result or (title_in_result and overlap_ratio >= 0.85)
 
 def download_track(artist, title, output_path, expected_duration_sec=0, tolerance=60):
     # 1. Busco la canción
@@ -150,16 +171,33 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                     if not val_dur: continue
                     
                     val_title = entry.get('title', 'Unknown')
-                    diff = abs(val_dur - expected_duration_sec)
+                    duration_delta = val_dur - expected_duration_sec
+                    diff = abs(duration_delta)
+                    title_similarity_ok = check_title_similarity(title, val_title)
+                    if not title_similarity_ok:
+                        continue
+                    strong_match = is_strong_track_match(artist, title, val_title)
                     
                     val_title_lower = val_title.lower().replace('`', "'").replace('’', "'")
                     
                     # Improve matching logic to avoid false positives on 'Full Album' mixes if searching for single tracks
-                    if diff > 600 and expected_duration_sec > 0: # If result is >10m off (e.g. 1hr mix)
+                    if expected_duration_sec > 0 and diff > 600 and not strong_match: # If result is >10m off (e.g. 1hr mix)
                          continue 
 
                     penalty = 0
                     current_tolerance = tolerance
+                    under_tolerance = tolerance
+                    over_tolerance = tolerance
+
+                    if strong_match:
+                        # Strong title/artist coincidences can be valid extended versions.
+                        under_tolerance = max(tolerance, 90)
+                        over_tolerance = max(tolerance * 5, 240)
+                    else:
+                        over_tolerance = max(tolerance * 2, 90)
+
+                    if expected_duration_sec > 0 and (duration_delta < -under_tolerance or duration_delta > over_tolerance):
+                        continue
                     
                     if specific_remix:
                         if specific_remix in val_title_lower:
@@ -174,16 +212,26 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                         if any(kw in val_title_lower for kw in remix_keywords):
                              if diff > 5: penalty = 100
 
-                    final_diff = diff + penalty
+                    if expected_duration_sec > 0:
+                        # Penalize shorter versions more than longer versions.
+                        duration_weight = 1.20 if duration_delta < 0 else 0.45
+                        duration_score = int(diff * duration_weight)
+                    else:
+                        duration_score = 0
+
+                    if strong_match:
+                        penalty -= 20
+
+                    final_diff = duration_score + penalty
+                    score_limit = current_tolerance + (60 if strong_match else 0)
                     # Solo consideramos candidatos que estén dentro de la tolerancia ajustada y que tengan títulos similares
-                    if final_diff <= current_tolerance:
-                        if check_title_similarity(title, val_title):
-                            viable_candidates.append({
-                                'score': final_diff,
-                                'entry': entry,
-                                'title': val_title,
-                                'duration': val_dur
-                            })
+                    if final_diff <= score_limit:
+                        viable_candidates.append({
+                            'score': final_diff,
+                            'entry': entry,
+                            'title': val_title,
+                            'duration': val_dur
+                        })
 
                 # De la lista de candidatos viables, ordeno por el que más se acerca al tiempo esperado
                 viable_candidates.sort(key=lambda x: x['score'])
