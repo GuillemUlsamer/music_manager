@@ -69,7 +69,7 @@ class MusicManagerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Music Manager")
-        self.root.geometry("650x520")
+        self.root.geometry("1200x520")
 
         # Fila superior: nombre del spreadsheet + botón
         top_frame = tk.Frame(root, pady=10)
