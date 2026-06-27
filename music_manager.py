@@ -354,19 +354,13 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 
                 worksheet.update_cell(row_num, COL_STATUS + 1, "")
 
-def main():
-    parser = argparse.ArgumentParser(description="Music Manager")
-    parser.add_argument("name", help="Name of the spreadsheet (and output folder)")
-    args = parser.parse_args()
-
-    # Determine paths
+def run_manager(spreadsheet_name):
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_music_dir = os.path.dirname(script_dir)
-    # Esto es para que la carpeta de descargas se llame igual que la spreadsheet, pero en mayúsculas y con " PLAYLIST" al final
-    download_dir = os.path.join(base_music_dir, str.upper(args.name) + " PLAYLIST")
+    download_dir = os.path.join(base_music_dir, str.upper(spreadsheet_name) + " PLAYLIST")
 
     print("\n\nEjecutando El creador de playlists")
-    print(f"Spreadsheet: {args.name}")
+    print(f"Spreadsheet: {spreadsheet_name}")
     print(f"Guardando en: {download_dir}")
 
     client = setup_gspread()
@@ -375,11 +369,23 @@ def main():
 
     try:
         print("\nMirando a ver que quieres...")
-        process_sheet(client, args.name, download_dir)
+        process_sheet(client, spreadsheet_name, download_dir)
     except Exception as e:
         print(f"Global Error: {e}")
-        
+
     print("\nFinished :)")
+
+def stop_manager():
+    # Stops the manager by raising a SystemExit exception. This will terminate the program.
+    print("Stopping the manager...")
+    raise SystemExit("Manager stopped by user.")
+    
+
+def main():
+    parser = argparse.ArgumentParser(description="Music Manager")
+    parser.add_argument("name", help="Name of the spreadsheet (and output folder)")
+    args = parser.parse_args()
+    run_manager(args.name)
 
 if __name__ == "__main__":
     main()
