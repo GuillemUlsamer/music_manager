@@ -7,6 +7,7 @@ function onOpen() {
   ui.createMenu('music_manager')
     .addItem('Import Discogs Release', 'showImportDialog')
     .addItem('Set up', 'showSetupDialog')
+    .addItem('Import Discogs List', 'showListImportDialog')
     .addToUi();
 }
 
@@ -22,6 +23,20 @@ function showImportDialog() {
     const releaseId = result.getResponseText();
     const sheetName = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getName();
     importDiscogsRelease(sheetName, releaseId);
+  }
+}
+
+function showListImportDialog() {
+  const ui = SpreadsheetApp.getUi();
+  const result = ui.prompt(
+    'Import List',
+    'Enter List ID (e.g. 1669268):',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (result.getSelectedButton() == ui.Button.OK) {
+    const listId = result.getResponseText();
+    importDiscogsList(listId);
   }
 }
 
@@ -197,4 +212,32 @@ function durationToSeconds(duration) {
 
 function secondsToSheetsDuration(seconds) {
   return seconds / 86400;
+}
+
+function importDiscogsList (listId) {
+  const url = `https://api.discogs.com/lists/${listId}`;
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      headers: {
+        "Authorization": "Discogs token=" + DISCOGS_TOKEN,
+        "User-Agent": USER_AGENT
+      }
+    });
+
+    const data = JSON.parse(response.getContentText());
+    const releases = data.items;
+    const volNum = releases.length;
+    const sheetFileName = SpreadsheetApp.getActiveSpreadsheet();
+    setupSheet(sheetFileName,volNum);
+
+    releases.forEach((release, index) => {
+      if (release.type !== "release") return;
+      const releaseId = release.id;
+      const sheetName = "V " + (index + 1);
+      importDiscogsRelease(sheetName, releaseId);
+    });
+
+  } catch (e) {
+    SpreadsheetApp.getUi().alert("Error importing: " + e.toString());
+  }
 }
