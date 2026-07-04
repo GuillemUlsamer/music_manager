@@ -151,8 +151,6 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
             'extract_flat': 'in_playlist',
             'ignoreerrors': True, 
             'logger': MyLogger(),
-            'cookiesfrombrowser': ('firefox',),
-            'extractor_args': {'youtube': {'player_client': ['web']}},
         }
 
         try:
@@ -249,8 +247,6 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                         'quiet': True,
                         'noplaylist': True,
                         'logger': MyLogger(),
-                        'cookiesfrombrowser': ('firefox',),
-                        'extractor_args': {'youtube': {'player_client': ['android', 'ios']}},
                         'cachedir': False, 
                     }
                     
@@ -328,7 +324,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
             # Si esta checkeada y no esta descargada, la descargo
             if is_checked and "Downloaded" not in status:
                 print(f"[{worksheet.title}] Downloading: {filename}")
-                worksheet.update_cell(row_num, COL_STATUS + 1, "\nDownloading...")
+                worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
                 
                 exp_seconds = parse_duration(duration_str)
                 final_path = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60)
