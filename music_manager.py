@@ -32,7 +32,7 @@ SCOPES = [
 
 class MyLogger(object):
     def debug(self, msg):
-        print(f"   > Debug: {msg}")
+        pass
 
     def warning(self, msg):
         pass
@@ -145,8 +145,7 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
 
         search_opts = {
             'format': 'bestaudio/best',
-            'quiet': False,
-            'verbose': True,
+            'quiet': True,
             'noplaylist': True,
             'default_search': attempt['prefix'],
             'extract_flat': 'in_playlist',
