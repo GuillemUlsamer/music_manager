@@ -152,8 +152,6 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
             'extract_flat': 'in_playlist',
             'ignoreerrors': True, 
             'logger': MyLogger(),
-            'cookiesfrombrowser': ('firefox',),
-            'extractor_args': {'youtube': {'player_client': ['web']}},
         }
 
         try:
@@ -250,7 +248,6 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                         'quiet': True,
                         'noplaylist': True,
                         'logger': MyLogger(),
-                        'cookiesfrombrowser': ('firefox',),
                         'cachedir': False, 
                     }
                     
