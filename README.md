@@ -11,6 +11,9 @@ Incluye un script de Google Apps Script (`playlistHelper.gs`) para importar trac
 - Download tracks from YouTube automatically
 - Convert to MP3 and add metadata
 - Import playlists from Discogs
+- Import Discogs lists (multi-release) and create volumes automatically
+- Keep a Releases catalog sheet with album, year and cover
+- Run from a desktop GUI (`gui.py`) with live colored logs and stop button
 
 ## Tech Stack
 - Python
@@ -96,6 +99,10 @@ function secondsToSheetsDuration(seconds) { General_music_manager.secondsToSheet
 
 5.  Recarga la hoja. Aparecerá un menú personalizado para importar releases de Discogs usando su ID.
 
+Además del import por Release ID, el menú también incluye:
+- **Import Discogs List**: importa una lista completa y crea un volumen por release.
+- Hoja **Releases**: guarda catálogo de álbumes importados (nombre, año y portada).
+
 ## Uso
 
 Ejecuta el script desde la terminal indicando el nombre de la hoja de cálculo (que debe coincidir con el nombre de la hoja en Google Drive). El script creará una carpeta con ese mismo nombre en el directorio padre `../MUSIC/`.
@@ -120,8 +127,19 @@ Esto buscará o creará la carpeta `../ALWAYS HARDCORE PLAYLIST` y descargará l
 
 depende de desde donde ejecutes el programa, yo tengo una carpeta en mi ordenador con todas mis playlists por ejemplo /Desktop/MUSIC/ 
 
+### Uso con GUI
+
+También puedes ejecutar el gestor con interfaz gráfica:
+
+```bash
+start "" ".\.venv\Scripts\pythonw.exe" gui.py
+```
+
+En la GUI, escribe el nombre del spreadsheet, pulsa **Ejecutar** y revisa el log en tiempo real.
+
 ## Estructura del Proyecto
 
 *   `music_manager.py`: Script principal de Python.
+*   `gui.py`: Interfaz gráfica para ejecutar y monitorizar el proceso.
 *   `playlistHelper.gs`: Script para Google Sheets (Google Apps Script).
 *   `requirements.txt`: Lista de librerías de Python necesarias.
