@@ -137,6 +137,54 @@ start "" ".\.venv\Scripts\pythonw.exe" gui.py
 
 En la GUI, escribe el nombre del spreadsheet, pulsa **Ejecutar** y revisa el log en tiempo real.
 
+## Problemas Comunes
+
+### Error: `ffprobe and ffmpeg not found`
+
+Falta FFmpeg. Instálalo:
+
+```powershell
+winget install --id Gyan.FFmpeg -e
+```
+
+Cierra la terminal, abre una nueva y comprueba:
+
+```powershell
+ffmpeg -version
+```
+
+### Error: `Sign in to confirm your age`
+
+El vídeo tiene restricción de edad. El script lo descarta y prueba con el siguiente resultado, así que normalmente no hay que hacer nada.
+
+Si quieres esa versión en concreto, descárgala a mano y deja el MP3 en la carpeta de la playlist:
+
+```powershell
+yt-dlp --cookies-from-browser chrome -x --audio-format mp3 "URL_DEL_VIDEO"
+```
+
+### Error 403 / YouTube detecta un bot
+
+No añadas cookies al script. Usarlas en todas las descargas es justo lo que provoca el bloqueo.
+
+1.  Actualiza yt-dlp: `pip install -U yt-dlp`
+2.  Espera un rato: el bloqueo es temporal.
+
+si no funciona vuelve a instalar el programa
+
+### Error: `Spreadsheet not found`
+
+1.  El nombre que pasas debe ser idéntico al de la hoja en Drive.
+2.  La hoja debe estar compartida con el `client_email` del `credentials.json`, y como **Editor** (el script escribe en la columna Estado).
+
+### Montar el proyecto en otro ordenador
+
+No hay que repetir nada de Google Cloud ni volver a compartir la hoja.
+
+1.  Copia el `credentials.json` del otro equipo. Si no lo tienes a mano, crea una clave nueva en la **misma** cuenta de servicio (Credenciales > la cuenta > Claves > Agregar clave > JSON). No invalida la del otro portátil.
+2.  Instala FFmpeg (ver arriba).
+3.  `pip install -r requirements.txt`
+
 ## Estructura del Proyecto
 
 *   `music_manager.py`: Script principal de Python.
