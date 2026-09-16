@@ -10,6 +10,7 @@ from google.oauth2.service_account import Credentials
 import sys
 import argparse
 import yt_dlp
+from yt_dlp.utils import download_range_func
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 
@@ -53,6 +54,9 @@ def sanitize_filename(name):
     # Retrieve quotes before stripping
     name = name.replace('"', "'")
     return re.sub(r'[<>:"/\\|?*]', '', name).strip()
+
+def strip_discogs_suffix(name):
+    return re.sub(r'\s*\(\d+\)\s*$', '', name or '').strip()
 
 # para limpiar el formato de duración, que tenga sentido
 def parse_duration(duration_val):
@@ -109,16 +113,86 @@ def is_strong_track_match(request_artist, request_title, result_title):
 
     return full_in_result or (title_in_result and overlap_ratio >= 0.85)
 
-def download_track(artist, title, output_path, expected_duration_sec=0, tolerance=60):
+# esto es por si la cancion individual no existe en youtube. Pilla la compilacion 
+# donde se encuentra y descarga solo el trozo donde está la canción.
+def find_album_chapter(album_query, artist, title, expected_duration_sec=0, tolerance=60, max_albums=4):
+    search_opts = {
+        'quiet': True, 'noplaylist': True, 'default_search': f'ytsearch{max_albums}:',
+        'extract_flat': 'in_playlist', 'ignoreerrors': True, 'logger': MyLogger(),
+    }
+    try:
+        with yt_dlp.YoutubeDL(search_opts) as ydl:
+            info = ydl.extract_info(album_query, download=False)
+    except Exception:
+        return None
+    entries = [e for e in (info.get('entries') or []) if e]
+
+    for entry in entries:
+        # Solo nos interesan videos largos (un album, no un track suelto)
+        if (entry.get('duration') or 0) < 1800:
+            continue
+        # extract_flat no trae capitulos: hay que pedir el video entero
+        try:
+            with yt_dlp.YoutubeDL({'quiet': True, 'noplaylist': True,
+                                   'ignoreerrors': True, 'logger': MyLogger()}) as ydl:
+                full = ydl.extract_info(entry['url'], download=False)
+        except Exception:
+            continue
+        if not full:
+            continue
+        chapters = full.get('chapters') or []
+        if len(chapters) < 5:
+            continue
+
+        print(f"   > Album: '{full.get('title')}' ({len(chapters)} capitulos)")
+        for ch in chapters:
+            ch_title = ch.get('title') or ''
+            start, end = ch.get('start_time'), ch.get('end_time')
+            if start is None or end is None:
+                continue
+            ch_dur = end - start
+            if not check_title_similarity(title, ch_title):
+                continue
+            # La duracion del capitulo ES la del track: filtro mucho mas fiable
+            if expected_duration_sec > 0 and abs(ch_dur - expected_duration_sec) > tolerance:
+                continue
+            return {'url': entry['url'], 'start': start, 'end': end,
+                    'chapter_title': ch_title, 'duration': ch_dur}
+    return None
+
+
+def download_chapter(hit, output_path):
+    dl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': output_path + '.%(ext)s',
+        'postprocessors': [{'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3', 'preferredquality': '320'}],
+        'download_ranges': download_range_func(None, [(hit['start'], hit['end'])]),
+        'force_keyframes_at_cuts': True,
+        'quiet': True, 'noplaylist': True, 'logger': MyLogger(), 'cachedir': False,
+    }
+    try:
+        with yt_dlp.YoutubeDL(dl_opts) as ydl:
+            ydl.download([hit['url']])
+        final_file = output_path + ".mp3"
+        if os.path.exists(final_file):
+            return final_file
+    except Exception as e:
+        print(f"   > Chapter Download Error: {e}")
+    return None
+
+def download_track(artist, title, output_path, expected_duration_sec=0, tolerance=60, album_hint=None):
+    # 0. quito el sufijo que le pone discogs
+    search_artist = strip_discogs_suffix(artist)
     # 1. Busco la canción
 
     # Definition of search attempts
     # We use multiple YouTube search variations as the primary strategy.
     # The 'Deep' search pulls 50 results to find obscure/unblocked uploads.
     attempts = [
-        {'source': 'YouTube (Exact)', 'prefix': 'ytsearch25:', 'query': f"\"{artist} - {title}\""},
-        {'source': 'YouTube (Loose)', 'prefix': 'ytsearch25:', 'query': f"{artist} {title}"}, 
-        {'source': 'YouTube (Deep)',  'prefix': 'ytsearch50:', 'query': f"{artist} {title} audio"}, 
+        {'source': 'YouTube (Exact)', 'prefix': 'ytsearch25:', 'query': f"\"{search_artist} - {title}\""},
+        {'source': 'YouTube (Loose)', 'prefix': 'ytsearch25:', 'query': f"{search_artist} {title}"}, 
+        {'source': 'YouTube (Deep)',  'prefix': 'ytsearch50:', 'query': f"{search_artist} {title} audio"}, 
     ]
     
     # 2. Que el tiempo de la canción tenga sentido
@@ -174,7 +248,7 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                     title_similarity_ok = check_title_similarity(title, val_title)
                     if not title_similarity_ok:
                         continue
-                    strong_match = is_strong_track_match(artist, title, val_title)
+                    strong_match = is_strong_track_match(search_artist, title, val_title)
                     
                     val_title_lower = val_title.lower().replace('`', "'").replace('’', "'")
                     
@@ -265,8 +339,22 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
             # print(f"   > Source Error ({src_name}): {e}")
             continue
 
+    # 5. Si todo el resto falla, buscamos dentro de la compilación.
+    if album_hint:
+        print(f"\n   > Search [Album Chapters]: {album_hint} (Target: {duration_fmt} ±{tolerance}s)")
+        hit = find_album_chapter(album_hint, search_artist, title,
+                                 expected_duration_sec=expected_duration_sec,
+                                 tolerance=tolerance)
+        if hit:
+            print(f"   > Match: '{hit['chapter_title']}' "
+                  f"({int(hit['duration'])//60}:{int(hit['duration'])%60:02d}) [capitulo]")
+            final_file = download_chapter(hit, output_path)
+            if final_file:
+                return final_file
+
     print("   > No matching track found in any source.")
     return None
+
 
 def tag_file(filepath, artist, title, album):
     try:
@@ -298,6 +386,9 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
     # 3. Por cada pagina que tenga el spreadsheet, miro las filas y veo cuales estan checkeadas para descargar o eliminar
     for worksheet in sheet.worksheets():
         rows = worksheet.get_all_values()
+        vol_match = re.search(r'\d+', worksheet.title)
+        album_hint = f"The {spreadsheet_name} {vol_match.group(0)} full album" if vol_match else None
+
         # 3.1 Si no hay filas o solo hay una (header), salto esta hoja
         if len(rows) < 2: continue
         
@@ -327,7 +418,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
                 
                 exp_seconds = parse_duration(duration_str)
-                final_path = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60)
+                final_path = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
                 
                 # si ha funcionado, pongo los tags
                 if final_path:
