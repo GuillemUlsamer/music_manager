@@ -7,10 +7,6 @@ import time
 import shutil
 import json
 import subprocess
-
-# Suppress Google Auth EOL warnings
-warnings.filterwarnings('ignore', message='.*Python version.*past its end of life.*')
-
 import gspread
 from google.oauth2.service_account import Credentials
 import argparse
@@ -18,28 +14,34 @@ import requests
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 from urllib.parse import quote
+from pathlib import Path
+
+# Suppress Google Auth EOL warnings
+warnings.filterwarnings('ignore', message='.*Python version.*past its end of life.*')
 
 # --- CONFIGURATION ---
-CREDENTIALS_FILE = 'credentials.json'
-
-SLSKD_CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'slskd_config.json')
+# Rutas ancladas a la carpeta del script, no al directorio desde el que se ejecuta.
+SCRIPT_DIR = Path(__file__).resolve().parent
+CREDENTIALS_FILE = SCRIPT_DIR / 'credentials.json'
+SLSKD_CONFIG_FILE = SCRIPT_DIR / 'slskd_config.json'
 
 def load_slskd_config():
-    if not os.path.exists(SLSKD_CONFIG_FILE):
+    if not SLSKD_CONFIG_FILE.exists():
         raise SystemExit(f"Falta {SLSKD_CONFIG_FILE}")
     with open(SLSKD_CONFIG_FILE, encoding='utf-8') as f:
         return json.load(f)
-    
+
 # cosas del slskd
 SLSKD = load_slskd_config()
 SLSKD_URL = SLSKD["url"]
 SLSKD_INBOX = SLSKD["inbox"]
 SLSKD_HEADERS = {"X-API-Key": SLSKD["api_key"]}
 
+MIN_BITRATE = 256
 SEARCH_WAIT_SEC = 12
 DOWNLOAD_WAIT_SEC = 240
 
-# --- SLSKD API ---
+# api del slskd
 def slskd_get(path, **params):
     r = requests.get(f"{SLSKD_URL}{path}", headers=SLSKD_HEADERS, params=params, timeout=10)
     r.raise_for_status()
@@ -50,7 +52,9 @@ def slskd_post(path, payload):
     r.raise_for_status()
     return r.json() if r.content else None
 
+# para comprobar que esté arrancado el slskd
 def ensure_slskd():
+    # si ya esta
     try:
         slskd_get("/application")
         return
@@ -61,8 +65,9 @@ def ensure_slskd():
     if not exe or not os.path.exists(exe):
         raise SystemExit("slskd no responde y no encuentro el exe (campo 'exe' en slskd_config.json).")
 
+    # si no estaba
     print("Arrancando slskd...")
-    subprocess.Popen([exe], creationflags=subprocess.CREATE_NO_WINDOW)
+    proc = subprocess.Popen([exe], creationflags=subprocess.CREATE_NO_WINDOW)
     for _ in range(30):
         time.sleep(1)
         try:
@@ -71,23 +76,19 @@ def ensure_slskd():
             return
         except requests.exceptions.ConnectionError:
             continue
+    proc.terminate()
     raise SystemExit("slskd no ha arrancado en 30 segundos.")
 
-def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
-    search = slskd_post("/searches", {"searchText": query})
-    search_id = search["id"]
-
-    deadline = time.time() + wait_sec
-    while time.time() < deadline:
-        time.sleep(1)
-        state = slskd_get(f"/searches/{search_id}")
-        # state es un texto tipo "InProgress" o "Completed, TimedOut"
-        if state["state"].startswith("Completed"):
-            break
-
-    responses = slskd_get(f"/searches/{search_id}/responses")
-    requests.delete(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10) 
-    return responses
+# para pararlo
+def stop_slskd(proc):
+    if proc is None:
+        return
+    print("Cerrando slskd...")
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
 
 # Columns (0-indexed)
 COL_ARTIST = 1
@@ -103,7 +104,7 @@ SCOPES = [
 ]
 
 def setup_gspread():
-    if not os.path.exists(CREDENTIALS_FILE):
+    if not CREDENTIALS_FILE.exists():
         print(f"Error: {CREDENTIALS_FILE} not found.")
         return None
     creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
@@ -113,6 +114,11 @@ def sanitize_filename(name):
     # Retrieve quotes before stripping
     name = name.replace('"', "'")
     return re.sub(r'[<>:"/\\|?*]', '', name).strip()
+
+def loose_title(title):
+    t = re.sub(r'[\(\[].*?[\)\]]', ' ', title)
+    t = re.sub(r'[^\w\s]', ' ', t)
+    return re.sub(r'\s+', ' ', t).strip()
 
 def strip_discogs_suffix(name):
     return re.sub(r'\s*\(\d+\)\s*$', '', name or '').strip()
@@ -151,6 +157,16 @@ def check_title_similarity(request_title, result_title):
     # si al menos la mitad de las palabras coinciden, lo consideramos suficientemente similar
     return (len(common) / len(req_w)) >= 0.6
 
+def cleanup_empty_dirs(path):
+    inbox = os.path.abspath(SLSKD_INBOX)
+    path = os.path.abspath(path)
+    while path.startswith(inbox) and path != inbox:
+        try:
+            os.rmdir(path)          # solo borra si esta vacia; si no, lanza OSError
+        except OSError:
+            break
+        path = os.path.dirname(path)
+
 def normalize_for_match(s):
     s = s.replace('`', "'").replace('’', "'").lower()
     return re.sub(r'[^a-z0-9]+', ' ', s).strip()
@@ -187,6 +203,22 @@ def slskd_remove_transfer(username, transfer_id):
     base = f"{SLSKD_URL}/transfers/downloads/{quote(username, safe='')}/{transfer_id}"
     requests.delete(base, headers=SLSKD_HEADERS, timeout=10)                       # cancela
     requests.delete(base, headers=SLSKD_HEADERS, params={'remove': 'true'}, timeout=10)  # borra
+
+def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
+    search = slskd_post("/searches", {"searchText": query})
+    search_id = search["id"]
+
+    deadline = time.time() + wait_sec
+    while time.time() < deadline:
+        time.sleep(1)
+        state = slskd_get(f"/searches/{search_id}")
+        # state es un texto tipo "InProgress" o "Completed, TimedOut"
+        if state["state"].startswith("Completed"):
+            break
+
+    responses = slskd_get(f"/searches/{search_id}/responses")
+    requests.delete(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10) 
+    return responses
 
 def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
     username = candidate['username']
@@ -226,15 +258,6 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
     slskd_remove_transfer(username, transfer['id'])
     return final_file
 
-def cleanup_empty_dirs(path):
-    inbox = os.path.abspath(SLSKD_INBOX)
-    path = os.path.abspath(path)
-    while path.startswith(inbox) and path != inbox:
-        try:
-            os.rmdir(path)          # solo borra si esta vacia; si no, lanza OSError
-        except OSError:
-            break
-        path = os.path.dirname(path)
 
 REMIX_KEYWORDS = ['remix', 'bootleg', 'edit', 'mix', 'refix', 'rmx']
 
@@ -310,10 +333,13 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
             # --- nuevo: calidad y disponibilidad ---
             bitrate = f.get('bitRate') or 0
-            if bitrate and bitrate < 192:
-                penalty += 40
-            elif not bitrate:
-                penalty += 15
+            is_vbr = f.get('isVariableBitRate', False)
+            if bitrate and bitrate < MIN_BITRATE and not (is_vbr and bitrate >= 220):
+                continue
+            if not bitrate:
+                penalty += 25
+            elif bitrate < 320:
+                penalty += 10
             if not resp.get('hasFreeUploadSlot', True):
                 penalty += 30
             penalty += min(resp.get('queueLength', 0), 50)
@@ -344,10 +370,6 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
 MAX_DOWNLOAD_TRIES = 4  
 
-def loose_title(title):
-    t = re.sub(r'[\(\[].*?[\)\]]', ' ', title)
-    t = re.sub(r'[^\w\s]', ' ', t)
-    return re.sub(r'\s+', ' ', t).strip()
 
 def download_track(artist, title, output_path, expected_duration_sec=0, tolerance=60, album_hint=None):
     search_artist = strip_discogs_suffix(artist)
@@ -483,31 +505,27 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 worksheet.update_cell(row_num, COL_STATUS + 1, "")
 
 def run_manager(spreadsheet_name):
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    base_music_dir = os.path.dirname(script_dir)
-    download_dir = os.path.join(base_music_dir, str.upper(spreadsheet_name) + " PLAYLIST")
+    download_dir = str(SCRIPT_DIR.parent / (spreadsheet_name.upper() + " PLAYLIST"))
 
     print("\n\nEjecutando El creador de playlists")
     print(f"Spreadsheet: {spreadsheet_name}")
     print(f"Guardando en: {download_dir}")
 
+    slskd_proc = None
     try:
-        ensure_slskd()
-    except Exception as e:
-        print(f"Error starting slskd: {e}")
-        return
-
-    client = setup_gspread()
-    if not client:
-        return
-
-    try:
+        slskd_proc = ensure_slskd()
+        client = setup_gspread()
+        if not client:
+            return
         print("\nMirando a ver que quieres...")
         process_sheet(client, spreadsheet_name, download_dir)
+        print("\nFinished :)")
+    except SystemExit as e:
+        print(f"Error: {e}")
     except Exception as e:
         print(f"Global Error: {e}")
-
-    print("\nFinished :)")
+    finally:
+        stop_slskd(slskd_proc)
 
 def stop_manager():
     # Stops the manager by raising a SystemExit exception. This will terminate the program.
