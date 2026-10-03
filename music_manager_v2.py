@@ -50,6 +50,30 @@ def slskd_post(path, payload):
     r.raise_for_status()
     return r.json() if r.content else None
 
+def ensure_slskd():
+    """Comprueba que slskd responde; si no, lo arranca desde el exe del config y espera."""
+    try:
+        slskd_get("/application")
+        return
+    except requests.exceptions.ConnectionError:
+        pass
+
+    exe = SLSKD["exe"]
+    if not exe or not os.path.exists(exe):
+        raise SystemExit("slskd no responde y no encuentro el exe (campo 'exe' en slskd_config.json).")
+
+    print("Arrancando slskd...")
+    subprocess.Popen([exe], creationflags=subprocess.CREATE_NO_WINDOW)
+    for _ in range(30):
+        time.sleep(1)
+        try:
+            slskd_get("/application")
+            print("slskd listo.")
+            return
+        except requests.exceptions.ConnectionError:
+            continue
+    raise SystemExit("slskd no ha arrancado en 30 segundos.")
+
 def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
     search = slskd_post("/searches", {"searchText": query})
     search_id = search["id"]
@@ -474,6 +498,12 @@ def run_manager(spreadsheet_name):
     print(f"Spreadsheet: {spreadsheet_name}")
     print(f"Guardando en: {download_dir}")
 
+    try:
+        ensure_slskd()
+    except Exception as e:
+        print(f"Error starting slskd: {e}")
+        return
+
     client = setup_gspread()
     if not client:
         return
@@ -493,16 +523,10 @@ def stop_manager():
     
 
 def main():
-    artist, title, dur = "Daft Punk", "Around the World", 429
-    responses = slskd_search(f"{artist} {title}")
-    candidates = score_candidates(responses, artist, title, dur, 60)
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_test", "Daft Punk - Around the World")
-    for c in candidates[:3]:
-        print(f"Trying {c['username']} ({c['bitrate']}kbps): {c['title']}")
-        result = slskd_download(c, out)
-        if result:
-            print("OK ->", result)
-            break
+    parser = argparse.ArgumentParser(description="Music Manager v2")
+    parser.add_argument("name", help="Name of the spreadsheet (and output folder)")
+    args = parser.parse_args()
+    run_manager(args.name)
 
 if __name__ == "__main__":
     main()
