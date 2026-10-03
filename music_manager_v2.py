@@ -51,7 +51,6 @@ def slskd_post(path, payload):
     return r.json() if r.content else None
 
 def ensure_slskd():
-    """Comprueba que slskd responde; si no, lo arranca desde el exe del config y espera."""
     try:
         slskd_get("/application")
         return
@@ -174,7 +173,6 @@ def is_strong_track_match(request_artist, request_title, result_title):
     return full_in_result or (title_in_result and overlap_ratio >= 0.85)
 
 def find_transfer(username, filename):
-    """Busca nuestra transferencia en la lista de descargas de ese usuario."""
     try:
         user = slskd_get(f"/transfers/downloads/{quote(username, safe='')}")
     except requests.exceptions.HTTPError:
@@ -229,7 +227,6 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
     return final_file
 
 def cleanup_empty_dirs(path):
-    """Borra carpetas vacias desde path hacia arriba, sin pasar del inbox."""
     inbox = os.path.abspath(SLSKD_INBOX)
     path = os.path.abspath(path)
     while path.startswith(inbox) and path != inbox:
@@ -249,7 +246,6 @@ def result_display_name(filename):
     return f"{parent} {base}".strip(), base
 
 def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60):
-    """Devuelve candidatos viables ordenados de mejor a peor (score bajo = mejor)."""
     specific_remix = None
     remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
     if remix_match:
@@ -346,10 +342,9 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
     unique.sort(key=lambda c: (c['score'], -c['bitrate'], -c['upload_speed']))
     return unique
 
-MAX_DOWNLOAD_TRIES = 4   # candidatos que probamos por busqueda antes de rendirnos
+MAX_DOWNLOAD_TRIES = 4  
 
 def loose_title(title):
-    """Quita parentesis/corchetes y signos: 'Around the World (Radio Edit)' -> 'Around the World'."""
     t = re.sub(r'[\(\[].*?[\)\]]', ' ', title)
     t = re.sub(r'[^\w\s]', ' ', t)
     return re.sub(r'\s+', ' ', t).strip()
@@ -359,8 +354,6 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
     exp_sec_int = int(expected_duration_sec)
     duration_fmt = f"{exp_sec_int//60}:{exp_sec_int%60:02d}"
 
-    # Soulseek hace AND de todas las palabras: la 2a busqueda es mas laxa por si
-    # el nombre del fichero no lleva artista o el titulo tiene adornos.
     attempts = [
         {'source': 'Soulseek (Exact)', 'query': f"{search_artist} {title}"},
         {'source': 'Soulseek (Loose)', 'query': f"{search_artist} {loose_title(title)}"},

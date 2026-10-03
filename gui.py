@@ -3,7 +3,7 @@ from tkinter import scrolledtext
 import threading
 import sys
 
-import music_manager
+import music_manager_v2 as music_manager
 
 
 class StdoutRedirector:
