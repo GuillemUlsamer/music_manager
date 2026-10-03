@@ -1,0 +1,693 @@
+import os
+import re
+import sys
+import warnings
+import glob
+import time
+import shutil
+import json
+import subprocess
+
+# Suppress Google Auth EOL warnings
+warnings.filterwarnings('ignore', message='.*Python version.*past its end of life.*')
+
+import gspread
+from google.oauth2.service_account import Credentials
+import argparse
+import requests
+from mutagen.easyid3 import EasyID3
+from mutagen.mp3 import MP3
+from urllib.parse import quote
+
+# --- CONFIGURATION ---
+CREDENTIALS_FILE = 'credentials.json'
+
+SLSKD_CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'slskd_config.json')
+
+def load_slskd_config():
+    if not os.path.exists(SLSKD_CONFIG_FILE):
+        raise SystemExit(f"Falta {SLSKD_CONFIG_FILE}")
+    with open(SLSKD_CONFIG_FILE, encoding='utf-8') as f:
+        return json.load(f)
+    
+# cosas del slskd
+SLSKD = load_slskd_config()
+SLSKD_URL = SLSKD["url"]
+SLSKD_INBOX = SLSKD["inbox"]
+SLSKD_HEADERS = {"X-API-Key": SLSKD["api_key"]}
+
+SEARCH_WAIT_SEC = 12
+DOWNLOAD_WAIT_SEC = 240
+
+# --- SLSKD API ---
+def slskd_get(path, **params):
+    r = requests.get(f"{SLSKD_URL}{path}", headers=SLSKD_HEADERS, params=params, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def slskd_post(path, payload):
+    r = requests.post(f"{SLSKD_URL}{path}", headers=SLSKD_HEADERS, json=payload, timeout=10)
+    r.raise_for_status()
+    return r.json() if r.content else None
+
+def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
+    search = slskd_post("/searches", {"searchText": query})
+    search_id = search["id"]
+
+    deadline = time.time() + wait_sec
+    while time.time() < deadline:
+        time.sleep(1)
+        state = slskd_get(f"/searches/{search_id}")
+        # state es un texto tipo "InProgress" o "Completed, TimedOut"
+        if state["state"].startswith("Completed"):
+            break
+
+    responses = slskd_get(f"/searches/{search_id}/responses")
+    requests.delete(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10) 
+    return responses
+
+# Columns (0-indexed)
+COL_ARTIST = 1
+COL_TITLE = 2
+COL_DURATION = 3
+COL_CHECKBOX = 5  # Column F
+COL_STATUS = 6    # Column G
+COL_NOTES = 7     # Column H
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+class MyLogger(object):
+    def debug(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        if "HTTP Error 403" in msg or "Deprecated Feature" in msg:
+            return 
+        print(f"   > Error: {msg}")
+
+def setup_gspread():
+    if not os.path.exists(CREDENTIALS_FILE):
+        print(f"Error: {CREDENTIALS_FILE} not found.")
+        return None
+    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+    return gspread.authorize(creds)
+
+def sanitize_filename(name):
+    # Retrieve quotes before stripping
+    name = name.replace('"', "'")
+    return re.sub(r'[<>:"/\\|?*]', '', name).strip()
+
+def strip_discogs_suffix(name):
+    return re.sub(r'\s*\(\d+\)\s*$', '', name or '').strip()
+
+# para limpiar el formato de duración, que tenga sentido
+def parse_duration(duration_val):
+    if not duration_val: return 0
+    try:
+        parts = list(map(int, str(duration_val).strip().split(':')))
+        if len(parts) == 3: return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        elif len(parts) == 2: return parts[0] * 60 + parts[1]
+    except ValueError: pass
+    return 0
+
+# Esto es para comparar el titulo de la canción que quiero con lo que he encontrado
+def check_title_similarity(request_title, result_title):
+    def normalize(s):
+        s = s.replace('`', "'").replace('’', "'")
+        return re.sub(r'[\s\W_]+', '', s.lower())
+    
+    req_s = normalize(request_title)
+    res_s = normalize(result_title)
+    
+    if req_s and (req_s in res_s or res_s in req_s):
+        return True
+        
+    def get_words(s):
+        s = s.replace('`', "'").replace('’', "'")
+        return set(re.findall(r'\w+', s.lower()))
+    
+    req_w = get_words(request_title)
+    res_w = get_words(result_title)
+    
+    if not req_w: return True 
+    common = req_w.intersection(res_w)
+    # si al menos la mitad de las palabras coinciden, lo consideramos suficientemente similar
+    return (len(common) / len(req_w)) >= 0.6
+
+def normalize_for_match(s):
+    s = s.replace('`', "'").replace('’', "'").lower()
+    return re.sub(r'[^a-z0-9]+', ' ', s).strip()
+
+def is_strong_track_match(request_artist, request_title, result_title):
+    req_title_norm = normalize_for_match(request_title)
+    req_full_norm = normalize_for_match(f"{request_artist} {request_title}")
+    result_norm = normalize_for_match(result_title)
+
+    if not req_title_norm or not result_norm:
+        return False
+
+    title_in_result = req_title_norm in result_norm
+    full_in_result = req_full_norm in result_norm if req_full_norm else False
+
+    req_words = set(req_title_norm.split())
+    res_words = set(result_norm.split())
+    overlap_ratio = (len(req_words.intersection(res_words)) / len(req_words)) if req_words else 0
+
+    return full_in_result or (title_in_result and overlap_ratio >= 0.85)
+
+def find_transfer(username, filename):
+    """Busca nuestra transferencia en la lista de descargas de ese usuario."""
+    try:
+        user = slskd_get(f"/transfers/downloads/{quote(username, safe='')}")
+    except requests.exceptions.HTTPError:
+        return None
+    for d in user.get('directories', []):
+        for t in d.get('files', []):
+            if t['filename'] == filename:
+                return t
+    return None
+
+def slskd_remove_transfer(username, transfer_id):
+    base = f"{SLSKD_URL}/transfers/downloads/{quote(username, safe='')}/{transfer_id}"
+    requests.delete(base, headers=SLSKD_HEADERS, timeout=10)                       # cancela
+    requests.delete(base, headers=SLSKD_HEADERS, params={'remove': 'true'}, timeout=10)  # borra
+
+def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
+    username = candidate['username']
+    file_info = candidate['file']
+    remote_name = file_info['filename'].replace('\\', '/').split('/')[-1]
+
+    slskd_post(f"/transfers/downloads/{quote(username, safe='')}", 
+               [{"filename": file_info['filename'], "size": file_info['size']}])
+
+    transfer = None
+    deadline = time.time() + wait_sec
+    while time.time() < deadline:
+        time.sleep(2)
+        transfer = find_transfer(username, file_info['filename'])
+        if transfer and transfer['state'].startswith("Completed"):
+            break
+
+    if not transfer:
+        print("   > slskd no registra la transferencia")
+        return None
+
+    if 'Succeeded' not in transfer['state']:
+        print(f"   > Transfer ended: {transfer['state']}")
+        slskd_remove_transfer(username, transfer['id'])
+        return None
+
+    matches = glob.glob(os.path.join(SLSKD_INBOX, '**', glob.escape(remote_name)), recursive=True)
+    if not matches:
+        print(f"   > Descargado pero no lo encuentro en {SLSKD_INBOX}")
+        slskd_remove_transfer(username, transfer['id'])
+        return None
+
+    final_file = output_path + ".mp3"
+    os.makedirs(os.path.dirname(final_file), exist_ok=True)
+    shutil.move(matches[0], final_file)
+    slskd_remove_transfer(username, transfer['id'])
+    return final_file
+
+REMIX_KEYWORDS = ['remix', 'bootleg', 'edit', 'mix', 'refix', 'rmx']
+
+def result_display_name(filename):
+    parts = filename.replace('\\', '/').split('/')
+    base = os.path.splitext(parts[-1])[0]
+    base = re.sub(r'^\s*\d{1,3}\s*[-._)]\s*', '', base)
+    parent = parts[-2] if len(parts) > 1 else ''
+    return f"{parent} {base}".strip(), base
+
+def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60):
+    """Devuelve candidatos viables ordenados de mejor a peor (score bajo = mejor)."""
+    specific_remix = None
+    remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
+    if remix_match:
+        specific_remix = remix_match.group(1).lower().replace('`', "'").replace('’', "'")
+    is_generic_remix_req = any(x in title.lower() for x in REMIX_KEYWORDS)
+
+    viable = []
+    for resp in responses:
+        for f in resp.get('files', []):
+            if f.get('isLocked'):
+                continue
+            if not f['filename'].lower().endswith('.mp3'):
+                continue
+
+            match_text, base = result_display_name(f['filename'])
+            if not check_title_similarity(title, base):
+                continue
+            strong_match = is_strong_track_match(search_artist, title, match_text)
+
+            # --- duracion (misma logica que v1, mas el caso "desconocida") ---
+            val_dur = f.get('length') or 0
+            penalty = 0
+            if val_dur and expected_duration_sec > 0:
+                duration_delta = val_dur - expected_duration_sec
+                diff = abs(duration_delta)
+                if diff > 600 and not strong_match:
+                    continue
+                under_tol, over_tol = tolerance, tolerance
+                if strong_match:
+                    under_tol = max(tolerance, 90)
+                    over_tol = max(tolerance * 5, 240)
+                else:
+                    over_tol = max(tolerance * 2, 90)
+                if duration_delta < -under_tol or duration_delta > over_tol:
+                    continue
+                duration_weight = 1.20 if duration_delta < 0 else 0.45
+                duration_score = int(diff * duration_weight)
+            else:
+                diff = 0
+                duration_score = 0
+                if expected_duration_sec > 0:
+                    penalty += 30      # no podemos verificar: peor que uno verificado
+
+            # --- remix (igual que v1) ---
+            base_lower = base.lower().replace('`', "'").replace('’', "'")
+            current_tolerance = tolerance
+            if specific_remix:
+                if specific_remix in base_lower:
+                    current_tolerance = 240
+                    penalty -= 50
+                else:
+                    penalty += 200
+            elif is_generic_remix_req:
+                if not any(kw in base_lower for kw in REMIX_KEYWORDS) and diff > 5:
+                    penalty += 100
+            else:
+                if any(kw in base_lower for kw in REMIX_KEYWORDS) and diff > 5:
+                    penalty += 100
+
+            if strong_match:
+                penalty -= 20
+
+            # --- nuevo: calidad y disponibilidad ---
+            bitrate = f.get('bitRate') or 0
+            if bitrate and bitrate < 192:
+                penalty += 40
+            elif not bitrate:
+                penalty += 15
+            if not resp.get('hasFreeUploadSlot', True):
+                penalty += 30
+            penalty += min(resp.get('queueLength', 0), 50)
+
+            final_score = duration_score + penalty
+            score_limit = current_tolerance + (60 if strong_match else 0) + 50
+            if final_score <= score_limit:
+                viable.append({
+                    'score': final_score,
+                    'username': resp['username'],
+                    'file': f,
+                    'title': base,
+                    'duration': val_dur,
+                    'bitrate': bitrate,
+                    'upload_speed': resp.get('uploadSpeed', 0),
+                })
+
+    seen = set()
+    unique = []
+    for c in viable:
+        key = (c['username'], c['title'].lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(c)
+    unique.sort(key=lambda c: (c['score'], -c['bitrate'], -c['upload_speed']))
+    return unique
+
+# esto es por si la cancion individual no existe en youtube. Pilla la compilacion 
+# donde se encuentra y descarga solo el trozo donde está la canción.
+def find_album_chapter(album_query, artist, title, expected_duration_sec=0, tolerance=60, max_albums=4):
+    search_opts = {
+        'quiet': True, 'noplaylist': True, 'default_search': f'ytsearch{max_albums}:',
+        'extract_flat': 'in_playlist', 'ignoreerrors': True, 'logger': MyLogger(),
+    }
+    try:
+        with yt_dlp.YoutubeDL(search_opts) as ydl:
+            info = ydl.extract_info(album_query, download=False)
+    except Exception:
+        return None
+    entries = [e for e in (info.get('entries') or []) if e]
+
+    for entry in entries:
+        # Solo nos interesan videos largos (un album, no un track suelto)
+        if (entry.get('duration') or 0) < 1800:
+            continue
+        # extract_flat no trae capitulos: hay que pedir el video entero
+        try:
+            with yt_dlp.YoutubeDL({'quiet': True, 'noplaylist': True,
+                                   'ignoreerrors': True, 'logger': MyLogger()}) as ydl:
+                full = ydl.extract_info(entry['url'], download=False)
+        except Exception:
+            continue
+        if not full:
+            continue
+        chapters = full.get('chapters') or []
+        if len(chapters) < 5:
+            continue
+
+        print(f"   > Album: '{full.get('title')}' ({len(chapters)} capitulos)")
+        for ch in chapters:
+            ch_title = ch.get('title') or ''
+            start, end = ch.get('start_time'), ch.get('end_time')
+            if start is None or end is None:
+                continue
+            ch_dur = end - start
+            if not check_title_similarity(title, ch_title):
+                continue
+            # La duracion del capitulo ES la del track: filtro mucho mas fiable
+            if expected_duration_sec > 0 and abs(ch_dur - expected_duration_sec) > tolerance:
+                continue
+            return {'url': entry['url'], 'start': start, 'end': end,
+                    'chapter_title': ch_title, 'duration': ch_dur}
+    return None
+
+
+def download_chapter(hit, output_path):
+    dl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': output_path + '.%(ext)s',
+        'postprocessors': [{'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3', 'preferredquality': '320'}],
+        'download_ranges': download_range_func(None, [(hit['start'], hit['end'])]),
+        'force_keyframes_at_cuts': True,
+        'quiet': True, 'noplaylist': True, 'logger': MyLogger(), 'cachedir': False,
+    }
+    try:
+        with yt_dlp.YoutubeDL(dl_opts) as ydl:
+            ydl.download([hit['url']])
+        final_file = output_path + ".mp3"
+        if os.path.exists(final_file):
+            return final_file
+    except Exception as e:
+        print(f"   > Chapter Download Error: {e}")
+    return None
+
+def download_track(artist, title, output_path, expected_duration_sec=0, tolerance=60, album_hint=None):
+    # 0. quito el sufijo que le pone discogs
+    search_artist = strip_discogs_suffix(artist)
+    # 1. Busco la canción
+
+    # Definition of search attempts
+    # We use multiple YouTube search variations as the primary strategy.
+    # The 'Deep' search pulls 50 results to find obscure/unblocked uploads.
+    attempts = [
+        {'source': 'YouTube (Exact)', 'prefix': 'ytsearch25:', 'query': f"\"{search_artist} - {title}\""},
+        {'source': 'YouTube (Loose)', 'prefix': 'ytsearch25:', 'query': f"{search_artist} {title}"}, 
+        {'source': 'YouTube (Deep)',  'prefix': 'ytsearch50:', 'query': f"{search_artist} {title} audio"}, 
+    ]
+    
+    # 2. Que el tiempo de la canción tenga sentido
+    exp_sec_int = int(expected_duration_sec)
+    duration_fmt = f"{exp_sec_int//60}:{exp_sec_int%60:02d}"
+    
+    # 3. Miro si es remix para no equivocarme
+    specific_remix = None
+    remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
+    if remix_match:
+        # Normalize: replace backticks and smart quotes
+        specific_remix = remix_match.group(1).lower().replace('`', "'").replace('’', "'")
+
+    # Generic remix keywords for fallback detection
+    remix_keywords = ['remix', 'bootleg', 'edit', 'mix', 'refix', 'rmx']
+    is_generic_remix_req = any(x in title.lower() for x in remix_keywords)
+
+    # lista de urls que han dado error al descargar, para no volver a intentarlas
+    failed_urls = set()
+
+    # 4. Busco de distintos modos en youtube
+    for attempt in attempts:
+        print(f"\n   > Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
+
+        search_opts = {
+            'format': 'bestaudio/best',
+            'quiet': True,
+            'noplaylist': True,
+            'default_search': attempt['prefix'],
+            'extract_flat': 'in_playlist',
+            'ignoreerrors': True, 
+            'logger': MyLogger(),
+        }
+
+        try:
+            with yt_dlp.YoutubeDL(search_opts) as ydl:
+                info = ydl.extract_info(attempt['query'], download=False)
+                
+                raw_entries = []
+                if 'entries' in info: raw_entries = info['entries']
+                elif 'url' in info: raw_entries = [info]
+                
+                viable_candidates = []
+
+                for entry in raw_entries:
+                    if not entry: continue
+                    val_dur = entry.get('duration', 0)
+                    if not val_dur: continue
+                    
+                    val_title = entry.get('title', 'Unknown')
+                    duration_delta = val_dur - expected_duration_sec
+                    diff = abs(duration_delta)
+                    title_similarity_ok = check_title_similarity(title, val_title)
+                    if not title_similarity_ok:
+                        continue
+                    strong_match = is_strong_track_match(search_artist, title, val_title)
+                    
+                    val_title_lower = val_title.lower().replace('`', "'").replace('’', "'")
+                    
+                    # Improve matching logic to avoid false positives on 'Full Album' mixes if searching for single tracks
+                    if expected_duration_sec > 0 and diff > 600 and not strong_match: # If result is >10m off (e.g. 1hr mix)
+                         continue 
+
+                    penalty = 0
+                    current_tolerance = tolerance
+                    under_tolerance = tolerance
+                    over_tolerance = tolerance
+
+                    if strong_match:
+                        # Strong title/artist coincidences can be valid extended versions.
+                        under_tolerance = max(tolerance, 90)
+                        over_tolerance = max(tolerance * 5, 240)
+                    else:
+                        over_tolerance = max(tolerance * 2, 90)
+
+                    if expected_duration_sec > 0 and (duration_delta < -under_tolerance or duration_delta > over_tolerance):
+                        continue
+                    
+                    if specific_remix:
+                        if specific_remix in val_title_lower:
+                            current_tolerance = 240 
+                            penalty = -50 
+                        else:
+                            penalty = 200 
+                    elif is_generic_remix_req:
+                        if not any(kw in val_title_lower for kw in remix_keywords):
+                            if diff > 5: penalty = 100
+                    else:
+                        if any(kw in val_title_lower for kw in remix_keywords):
+                             if diff > 5: penalty = 100
+
+                    if expected_duration_sec > 0:
+                        # Penalize shorter versions more than longer versions.
+                        duration_weight = 1.20 if duration_delta < 0 else 0.45
+                        duration_score = int(diff * duration_weight)
+                    else:
+                        duration_score = 0
+
+                    if strong_match:
+                        penalty -= 20
+
+                    final_diff = duration_score + penalty
+                    score_limit = current_tolerance + (60 if strong_match else 0)
+                    # Solo consideramos candidatos que estén dentro de la tolerancia ajustada y que tengan títulos similares
+                    if final_diff <= score_limit:
+                        viable_candidates.append({
+                            'score': final_diff,
+                            'entry': entry,
+                            'title': val_title,
+                            'duration': val_dur
+                        })
+
+                # De la lista de candidatos viables, ordeno por el que más se acerca al tiempo esperado
+                viable_candidates.sort(key=lambda x: x['score'])
+
+                for candidate in viable_candidates:
+                    dl_url = candidate['entry']['url']
+                    if dl_url in failed_urls: continue
+
+                    print(f"   > Match: '{candidate['title']}' ({int(candidate['duration'])//60}:{int(candidate['duration'])%60:02d})")
+
+                    dl_opts = {
+                        'format': 'bestaudio/best',
+                        'outtmpl': output_path + '.%(ext)s',
+                        'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '320'}],
+                        'quiet': True,
+                        'noplaylist': True,
+                        'logger': MyLogger(),
+                        'cachedir': False, 
+                    }
+                    
+                    try:
+                        with yt_dlp.YoutubeDL(dl_opts) as ydl:
+                            ydl.download([dl_url])
+                        
+                        final_file = output_path + ".mp3"
+                        if os.path.exists(final_file): return final_file
+                    except Exception as e:
+                        print(f"   > Download Error: {e}")
+                        failed_urls.add(dl_url)
+                        continue 
+
+        except Exception:
+            # print(f"   > Source Error ({src_name}): {e}")
+            continue
+
+    # 5. Si todo el resto falla, buscamos dentro de la compilación.
+    if album_hint:
+        print(f"\n   > Search [Album Chapters]: {album_hint} (Target: {duration_fmt} ±{tolerance}s)")
+        hit = find_album_chapter(album_hint, search_artist, title,
+                                 expected_duration_sec=expected_duration_sec,
+                                 tolerance=tolerance)
+        if hit:
+            print(f"   > Match: '{hit['chapter_title']}' "
+                  f"({int(hit['duration'])//60}:{int(hit['duration'])%60:02d}) [capitulo]")
+            final_file = download_chapter(hit, output_path)
+            if final_file:
+                return final_file
+
+    print("   > No matching track found in any source.")
+    return None
+
+
+def tag_file(filepath, artist, title, album):
+    try:
+        audio = MP3(filepath, ID3=EasyID3)
+        try:
+            audio.add_tags()
+        except Exception:
+            pass
+        audio['artist'] = artist
+        audio['title'] = title
+        audio['album'] = album
+        audio.save()
+        # print(f"Tagged: {filepath}")
+    except Exception as e:
+        print(f"Error tagging {filepath}: {e}")
+
+def process_sheet(client, spreadsheet_name, base_download_dir):
+    # 1. Abro el spreadsheet (si existe)
+    try:
+        sheet = client.open(spreadsheet_name)
+    except gspread.exceptions.SpreadsheetNotFound:
+        print(f"Spreadsheet '{spreadsheet_name}' not found.")
+        return
+
+    # 2. Creo la carpeta de descargas si no existe
+    if not os.path.exists(base_download_dir):
+        os.makedirs(base_download_dir)
+
+    # 3. Por cada pagina que tenga el spreadsheet, miro las filas y veo cuales estan checkeadas para descargar o eliminar
+    for worksheet in sheet.worksheets():
+        rows = worksheet.get_all_values()
+        vol_match = re.search(r'\d+', worksheet.title)
+        album_hint = f"The {spreadsheet_name} {vol_match.group(0)} full album" if vol_match else None
+
+        # 3.1 Si no hay filas o solo hay una (header), salto esta hoja
+        if len(rows) < 2: continue
+        
+        # 3.2 Por cada fila (excepto la primera que es el header), miro a ver que hago
+        for i in range(1, len(rows)):
+            row = rows[i]
+            row_num = i + 1
+            
+            # Miro si la fila tiene cancion (si no hay checkbox, no hay cancion, asi que la salto)
+            if len(row) <= COL_CHECKBOX: continue
+            
+            artist = row[COL_ARTIST]
+            title = row[COL_TITLE]
+            duration_str = row[COL_DURATION]
+            is_checked = row[COL_CHECKBOX].lower() == 'true'
+            status = row[COL_STATUS] if len(row) > COL_STATUS else ""
+            
+            filename = f"{artist} - {title}"
+            safe_filename = sanitize_filename(filename)
+            
+            file_path = os.path.join(base_download_dir, safe_filename)
+            mp3_path = file_path + ".mp3"
+
+            # Si esta checkeada y no esta descargada, la descargo
+            if is_checked and "Downloaded" not in status:
+                print(f"[{worksheet.title}] Downloading: {filename}")
+                worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
+                
+                exp_seconds = parse_duration(duration_str)
+                final_path = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
+                
+                # si ha funcionado, pongo los tags
+                if final_path:
+                    tag_file(final_path, artist, title, worksheet.title)
+                    worksheet.update_cell(row_num, COL_STATUS + 1, "Downloaded")
+                    print("   > Done.")
+                else:
+                    worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
+                    print("   > Failed.")
+
+            # Si no esta checkeada pero esta descargada, la borro
+            elif not is_checked and "Downloaded" in status and "Deleting" not in status:
+                print(f"[{worksheet.title}] Deleting: {filename}")
+                if os.path.exists(mp3_path):
+                    try:
+                        os.remove(mp3_path)
+                        print("   > Deleted.")
+                    except Exception as e:
+                        print(f"   > Del Error: {e}")
+                
+                worksheet.update_cell(row_num, COL_STATUS + 1, "")
+
+def run_manager(spreadsheet_name):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_music_dir = os.path.dirname(script_dir)
+    download_dir = os.path.join(base_music_dir, str.upper(spreadsheet_name) + " PLAYLIST")
+
+    print("\n\nEjecutando El creador de playlists")
+    print(f"Spreadsheet: {spreadsheet_name}")
+    print(f"Guardando en: {download_dir}")
+
+    client = setup_gspread()
+    if not client:
+        return
+
+    try:
+        print("\nMirando a ver que quieres...")
+        process_sheet(client, spreadsheet_name, download_dir)
+    except Exception as e:
+        print(f"Global Error: {e}")
+
+    print("\nFinished :)")
+
+def stop_manager():
+    # Stops the manager by raising a SystemExit exception. This will terminate the program.
+    print("Stopping the manager...")
+    raise SystemExit("Manager stopped by user.")
+    
+
+def main():
+    artist, title, dur = "Daft Punk", "Around the World", 429
+    responses = slskd_search(f"{artist} {title}")
+    candidates = score_candidates(responses, artist, title, dur, 60)
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_test", "Daft Punk - Around the World")
+    for c in candidates[:3]:
+        print(f"Trying {c['username']} ({c['bitrate']}kbps): {c['title']}")
+        result = slskd_download(c, out)
+        if result:
+            print("OK ->", result)
+            break
+        
+if __name__ == "__main__":
+    main()

@@ -2,3 +2,5 @@ credentials.json
 __pycache__/
 *.mp3
 .ds_store
+slskd_config.json
+_test/
