@@ -45,7 +45,7 @@ STOP_EVENT = threading.Event()
 def check_stop():
     if STOP_EVENT.is_set():
         raise SystemExit("Detenido por el usuario.")
-SEARCH_WAIT_SEC = 12
+SEARCH_WAIT_SEC = 5
 DOWNLOAD_WAIT_SEC = 240
 
 # api del slskd
@@ -224,16 +224,24 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
     search_id = search["id"]
 
     deadline = time.time() + wait_sec
+    state = search
     while time.time() < deadline:
         check_stop()
         time.sleep(1)
         state = slskd_get(f"/searches/{search_id}")
-        # state es un texto tipo "InProgress" o "Completed, TimedOut"
         if state["state"].startswith("Completed"):
             break
 
+    if not state["state"].startswith("Completed"):
+        requests.put(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10)
+        for _ in range(10):
+            time.sleep(0.5)
+            state = slskd_get(f"/searches/{search_id}")
+            if state["state"].startswith("Completed"):
+                break
+
     responses = slskd_get(f"/searches/{search_id}/responses")
-    requests.delete(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10) 
+    requests.delete(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10)
     return responses
 
 def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
