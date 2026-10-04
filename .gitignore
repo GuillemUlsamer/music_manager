@@ -4,3 +4,6 @@ __pycache__/
 .ds_store
 slskd_config.json
 _test/
+.cache/
+_test/
+diag_search.py

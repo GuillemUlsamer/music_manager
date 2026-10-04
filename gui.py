@@ -1,7 +1,10 @@
-import tkinter as tk
-from tkinter import scrolledtext, ttk
-import threading
+import io
 import sys
+import threading
+import tkinter as tk
+from tkinter import scrolledtext
+
+from PIL import Image, ImageOps, ImageTk
 
 import music_manager_v2 as music_manager
 
@@ -79,64 +82,83 @@ class MusicManagerGUI:
         self.show_picker()
 
     # pantalla de selección de playlist
+    THUMB = 160
+    COLS = 6
+
     def _build_picker(self):
         self.picker = tk.Frame(self.root, padx=10, pady=10)
 
         tk.Label(self.picker, text="Elige una playlist de tu Drive:",
                  font=("TkDefaultFont", 11, "bold")).pack(anchor="w")
 
-        list_frame = tk.Frame(self.picker)
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=8)
-        scrollbar = tk.Scrollbar(list_frame)
+        # Canvas con scroll que contiene el frame de tarjetas
+        grid_frame = tk.Frame(self.picker)
+        grid_frame.pack(fill=tk.BOTH, expand=True, pady=8)
+        self.canvas = tk.Canvas(grid_frame, highlightthickness=0)
+        scrollbar = tk.Scrollbar(grid_frame, orient="vertical", command=self.canvas.yview)
+        self.cards = tk.Frame(self.canvas)
+        self.cards.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.create_window((0, 0), window=self.cards, anchor="nw")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.playlist_list = tk.Listbox(list_frame, font=("TkDefaultFont", 11),
-                                        yscrollcommand=scrollbar.set, activestyle="none")
-        self.playlist_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.playlist_list.yview)
-        self.playlist_list.bind("<Double-Button-1>", lambda e: self.open_selected())
-        self.playlist_list.bind("<Return>", lambda e: self.open_selected())
+        self.canvas.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(-e.delta // 120, "units"))
 
         buttons = tk.Frame(self.picker)
         buttons.pack(fill=tk.X)
         self.picker_status = tk.Label(buttons, text="", anchor="w")
         self.picker_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.refresh_button = tk.Button(buttons, text="Actualizar", cursor="hand2", command=self.load_playlists)
-        self.refresh_button.pack(side=tk.LEFT, padx=(0, 8))
-        self.open_button = tk.Button(buttons, text="Abrir", cursor="hand2", command=self.open_selected)
-        self.open_button.pack(side=tk.LEFT)
+        self.refresh_button.pack(side=tk.LEFT)
+
+        self.thumbs = []   # referencias a las PhotoImage: si se pierden, Tk las borra
 
     def load_playlists(self):
         self.refresh_button.config(state="disabled")
         self.picker_status.config(text="Cargando playlists de Drive...")
         threading.Thread(target=self._load_playlists_thread, daemon=True).start()
-    
+
     def _load_playlists_thread(self):
         try:
-            names = music_manager.list_spreadsheets()
+            playlists = music_manager.list_playlists()
             error = None
         except Exception as e:
-            names, error = [], e
-        self.root.after(0, self._on_playlists_loaded, names, error)
+            playlists, error = [], e
+        self.root.after(0, self._on_playlists_loaded, playlists, error)
 
-    def _on_playlists_loaded(self, names, error):
+    def _on_playlists_loaded(self, playlists, error):
         self.refresh_button.config(state="normal")
         if error:
             self.picker_status.config(text=f"No se pudieron cargar las playlists: {error}")
             return
-        self.playlist_list.delete(0, tk.END)
-        for name in names:
-            self.playlist_list.insert(tk.END, name)
-        if names:
-            self.playlist_list.selection_set(0)
-            self.playlist_list.focus_set()
-        self.picker_status.config(text=f"{len(names)} playlists disponibles.")
+        for w in self.cards.winfo_children():
+            w.destroy()
+        self.thumbs.clear()
 
-    def open_selected(self):
-        selection = self.playlist_list.curselection()
-        if not selection:
-            self.picker_status.config(text="Selecciona una playlist primero.")
-            return
-        self.playlist_name = self.playlist_list.get(selection[0])
+        for i, p in enumerate(playlists):
+            photo = self._make_thumb(p['image'])
+            self.thumbs.append(photo)
+            card = tk.Frame(self.cards, padx=8, pady=8, cursor="hand2")
+            card.grid(row=i // self.COLS, column=i % self.COLS, padx=6, pady=6)
+            img_label = tk.Label(card, image=photo, bd=1, relief="solid")
+            img_label.pack()
+            txt_label = tk.Label(card, text=p['title'], wraplength=self.THUMB, justify="center")
+            txt_label.pack(pady=(6, 0))
+            for w in (card, img_label, txt_label):
+                w.bind("<Button-1>", lambda e, name=p['title']: self.open_playlist(name))
+
+        self.picker_status.config(text=f"{len(playlists)} playlists disponibles.")
+
+    def _make_thumb(self, image_bytes):
+        if image_bytes:
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            img = ImageOps.fit(img, (self.THUMB, self.THUMB))
+        else:
+            img = Image.new("RGB", (self.THUMB, self.THUMB), "#dddddd")
+        return ImageTk.PhotoImage(img)
+
+    def open_playlist(self, name):
+        self.playlist_name = name
         self.show_runner()
 
     # pantalla de descarga

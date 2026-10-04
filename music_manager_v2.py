@@ -8,6 +8,8 @@ import shutil
 import json
 import subprocess
 import threading
+import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import gspread
 from google.oauth2.service_account import Credentials
 import argparse
@@ -121,11 +123,50 @@ def setup_gspread():
     creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
     return gspread.authorize(creds)
 
-def list_spreadsheets():
+IMAGE_URL_RE = re.compile(r'=IMAGE\(\s*"([^"]+)"', re.IGNORECASE)
+COVER_CACHE_DIR = SCRIPT_DIR / '.cache' / 'covers'
+
+def _read_cover_url(client, spreadsheet_id):
+    """Lee la formula de C2 (primera pestana) con una sola llamada a la API."""
+    params = {'valueRenderOption': 'FORMULA'}
+    try:
+        data = client.http_client.values_get(spreadsheet_id, 'C2', params=params)
+    except AttributeError:   # gspread < 6
+        data = client.open_by_key(spreadsheet_id).values_get('C2', params=params)
+    values = data.get('values') or [['']]
+    match = IMAGE_URL_RE.search(values[0][0] or '')
+    return match.group(1) if match else None
+
+def fetch_image(url, timeout=10):
+    """Descarga una portada, con cache en disco para no repetir descargas."""
+    COVER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cached = COVER_CACHE_DIR / (hashlib.sha1(url.encode()).hexdigest() + '.img')
+    if cached.exists():
+        return cached.read_bytes()
+    r = requests.get(url, headers={'User-Agent': 'music-manager/2.0'}, timeout=timeout)
+    r.raise_for_status()
+    cached.write_bytes(r.content)
+    return r.content
+
+def list_playlists(with_images=True, workers=8):
+    """Una entrada por spreadsheet accesible: titulo, URL de portada y bytes de la imagen."""
     client = setup_gspread()
     if not client:
         return []
-    return sorted(sh.title for sh in client.openall())
+    files = sorted(client.list_spreadsheet_files(), key=lambda f: f['name'].lower())
+    playlists = [{'title': f['name'], 'id': f['id'], 'image_url': None, 'image': None} for f in files]
+
+    def fill(p):
+        try:
+            p['image_url'] = _read_cover_url(client, p['id'])
+            if with_images and p['image_url']:
+                p['image'] = fetch_image(p['image_url'])
+        except Exception:
+            pass
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        list(pool.map(fill, playlists))
+    return playlists
 
 def sanitize_filename(name):
     # Retrieve quotes before stripping
