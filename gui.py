@@ -70,60 +70,46 @@ class MusicManagerGUI:
         self.root = root
         self.root.title("Music Manager")
         self.root.geometry("1200x520")
+        self.playlist_name = None
 
-        # Fila superior: nombre del spreadsheet + botón
-        top_frame = tk.Frame(root, pady=10)
-        top_frame.pack(fill=tk.X, padx=10)
+        self._build_picker()
+        self._build_runner()
 
-        tk.Label(top_frame, text="Nombre de la Playlist:").pack(side=tk.LEFT)
-
-        self.name_entry = ttk.Combobox(top_frame, cursor="xterm")
-        self.name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
-        self.name_entry.bind("<Return>", lambda event: self.start_run())
-
-        self.refresh_button = tk.Button(top_frame, text="↻", cursor="hand2", command=self.load_playlists)
-        self.refresh_button.pack(side=tk.LEFT, padx=(0, 8))
-
-        self.run_button = tk.Button(top_frame, text="Ejecutar", cursor="hand2", command=self.start_run)
-        self.run_button.pack(side=tk.LEFT)
-
-        # Log
-        self.log_box = scrolledtext.ScrolledText(root, cursor="arrow", wrap=tk.WORD, state="normal")
-        self.log_box.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
-
-        # Fila inferior: Status label + botón Detener
-        bottom_frame = tk.Frame(root)
-        bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-        self.status_label = tk.Label(bottom_frame, text="Listo.", anchor="w")
-        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # Stop button
-        self.stop_button = tk.Button(bottom_frame, text="Detener", cursor="hand2", command=self._on_stop)
-        self.stop_button.pack(side=tk.LEFT)
-
-        # Redirigimos los print() de music_manager.py hacia el log_box
         sys.stdout = StdoutRedirector(self.log_box)
-        self.root.after(100, self.load_playlists)
+        self.show_picker()
 
-    def start_run(self):
-        name = self.name_entry.get().strip()
-        if not name:
-            self.status_label.config(text="Escribe un nombre de spreadsheet primero.")
-            return
+    # pantalla de selección de playlist
+    def _build_picker(self):
+        self.picker = tk.Frame(self.root, padx=10, pady=10)
 
-        # Evitar lanzar dos ejecuciones a la vez
-        self.run_button.config(state="disabled")
-        self.status_label.config(text=f"Ejecutando: {name} ...")
+        tk.Label(self.picker, text="Elige una playlist de tu Drive:",
+                 font=("TkDefaultFont", 11, "bold")).pack(anchor="w")
 
-        # Lanzamos la descarga en un hilo aparte para que la ventana no se congele
-        thread = threading.Thread(target=self._run_in_thread, args=(name,), daemon=True)
-        thread.start()
+        list_frame = tk.Frame(self.picker)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=8)
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.playlist_list = tk.Listbox(list_frame, font=("TkDefaultFont", 11),
+                                        yscrollcommand=scrollbar.set, activestyle="none")
+        self.playlist_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.playlist_list.yview)
+        self.playlist_list.bind("<Double-Button-1>", lambda e: self.open_selected())
+        self.playlist_list.bind("<Return>", lambda e: self.open_selected())
+
+        buttons = tk.Frame(self.picker)
+        buttons.pack(fill=tk.X)
+        self.picker_status = tk.Label(buttons, text="", anchor="w")
+        self.picker_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.refresh_button = tk.Button(buttons, text="Actualizar", cursor="hand2", command=self.load_playlists)
+        self.refresh_button.pack(side=tk.LEFT, padx=(0, 8))
+        self.open_button = tk.Button(buttons, text="Abrir", cursor="hand2", command=self.open_selected)
+        self.open_button.pack(side=tk.LEFT)
 
     def load_playlists(self):
         self.refresh_button.config(state="disabled")
-        self.status_label.config(text="Cargando playlists de Drive...")
+        self.picker_status.config(text="Cargando playlists de Drive...")
         threading.Thread(target=self._load_playlists_thread, daemon=True).start()
-
+    
     def _load_playlists_thread(self):
         try:
             names = music_manager.list_spreadsheets()
@@ -135,12 +121,65 @@ class MusicManagerGUI:
     def _on_playlists_loaded(self, names, error):
         self.refresh_button.config(state="normal")
         if error:
-            self.status_label.config(text=f"No se pudieron cargar las playlists: {error}")
+            self.picker_status.config(text=f"No se pudieron cargar las playlists: {error}")
             return
-        self.name_entry["values"] = names
-        if names and not self.name_entry.get():
-            self.name_entry.set(names[0])
-        self.status_label.config(text=f"{len(names)} playlists disponibles.")
+        self.playlist_list.delete(0, tk.END)
+        for name in names:
+            self.playlist_list.insert(tk.END, name)
+        if names:
+            self.playlist_list.selection_set(0)
+            self.playlist_list.focus_set()
+        self.picker_status.config(text=f"{len(names)} playlists disponibles.")
+
+    def open_selected(self):
+        selection = self.playlist_list.curselection()
+        if not selection:
+            self.picker_status.config(text="Selecciona una playlist primero.")
+            return
+        self.playlist_name = self.playlist_list.get(selection[0])
+        self.show_runner()
+
+    # pantalla de descarga
+    def _build_runner(self):
+        self.runner = tk.Frame(self.root)
+
+        top_frame = tk.Frame(self.runner, pady=10)
+        top_frame.pack(fill=tk.X, padx=10)
+        self.back_button = tk.Button(top_frame, text="< Playlists", cursor="hand2", command=self.show_picker)
+        self.back_button.pack(side=tk.LEFT, padx=(0, 12))
+        self.title_label = tk.Label(top_frame, text="", font=("TkDefaultFont", 11, "bold"), anchor="w")
+        self.title_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.run_button = tk.Button(top_frame, text="Ejecutar", cursor="hand2", command=self.start_run)
+        self.run_button.pack(side=tk.LEFT)
+
+        self.log_box = scrolledtext.ScrolledText(self.runner, cursor="arrow", wrap=tk.WORD, state="normal")
+        self.log_box.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+        bottom_frame = tk.Frame(self.runner)
+        bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.status_label = tk.Label(bottom_frame, text="Listo.", anchor="w")
+        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.stop_button = tk.Button(bottom_frame, text="Detener", cursor="hand2", command=self._on_stop)
+        self.stop_button.pack(side=tk.LEFT)
+
+    def show_picker(self):
+        self.runner.pack_forget()
+        self.picker.pack(fill=tk.BOTH, expand=True)
+        self.load_playlists()
+
+    def show_runner(self):
+        self.picker.pack_forget()
+        self.title_label.config(text=self.playlist_name)
+        self.status_label.config(text="Listo.")
+        self.runner.pack(fill=tk.BOTH, expand=True)
+        self.start_run()
+
+    def start_run(self):
+        self.run_button.config(state="disabled")
+        self.back_button.config(state="disabled")
+        self.status_label.config(text=f"Ejecutando: {self.playlist_name} ...")
+        thread = threading.Thread(target=self._run_in_thread, args=(self.playlist_name,), daemon=True)
+        thread.start()
 
     def _run_in_thread(self, name):
         try:
@@ -153,12 +192,12 @@ class MusicManagerGUI:
 
     def _on_finished(self):
         self.run_button.config(state="normal")
+        self.back_button.config(state="normal")
         self.status_label.config(text="Listo.")
 
     def _on_stop(self):
         self.status_label.config(text="Deteniendo...")
         music_manager.stop_manager()
-
 
 if __name__ == "__main__":
     root = tk.Tk()
