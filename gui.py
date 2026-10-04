@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, ttk
 import threading
 import sys
 
@@ -77,9 +77,12 @@ class MusicManagerGUI:
 
         tk.Label(top_frame, text="Nombre de la Playlist:").pack(side=tk.LEFT)
 
-        self.name_entry = tk.Entry(top_frame, cursor="xterm")
+        self.name_entry = ttk.Combobox(top_frame, cursor="xterm")
         self.name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
         self.name_entry.bind("<Return>", lambda event: self.start_run())
+
+        self.refresh_button = tk.Button(top_frame, text="↻", cursor="hand2", command=self.load_playlists)
+        self.refresh_button.pack(side=tk.LEFT, padx=(0, 8))
 
         self.run_button = tk.Button(top_frame, text="Ejecutar", cursor="hand2", command=self.start_run)
         self.run_button.pack(side=tk.LEFT)
@@ -100,6 +103,7 @@ class MusicManagerGUI:
 
         # Redirigimos los print() de music_manager.py hacia el log_box
         sys.stdout = StdoutRedirector(self.log_box)
+        self.root.after(100, self.load_playlists)
 
     def start_run(self):
         name = self.name_entry.get().strip()
@@ -114,6 +118,29 @@ class MusicManagerGUI:
         # Lanzamos la descarga en un hilo aparte para que la ventana no se congele
         thread = threading.Thread(target=self._run_in_thread, args=(name,), daemon=True)
         thread.start()
+
+    def load_playlists(self):
+        self.refresh_button.config(state="disabled")
+        self.status_label.config(text="Cargando playlists de Drive...")
+        threading.Thread(target=self._load_playlists_thread, daemon=True).start()
+
+    def _load_playlists_thread(self):
+        try:
+            names = music_manager.list_spreadsheets()
+            error = None
+        except Exception as e:
+            names, error = [], e
+        self.root.after(0, self._on_playlists_loaded, names, error)
+
+    def _on_playlists_loaded(self, names, error):
+        self.refresh_button.config(state="normal")
+        if error:
+            self.status_label.config(text=f"No se pudieron cargar las playlists: {error}")
+            return
+        self.name_entry["values"] = names
+        if names and not self.name_entry.get():
+            self.name_entry.set(names[0])
+        self.status_label.config(text=f"{len(names)} playlists disponibles.")
 
     def _run_in_thread(self, name):
         try:

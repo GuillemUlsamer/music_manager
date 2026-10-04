@@ -121,6 +121,12 @@ def setup_gspread():
     creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
     return gspread.authorize(creds)
 
+def list_spreadsheets():
+    client = setup_gspread()
+    if not client:
+        return []
+    return sorted(sh.title for sh in client.openall())
+
 def sanitize_filename(name):
     # Retrieve quotes before stripping
     name = name.replace('"', "'")
