@@ -7,6 +7,7 @@ import time
 import shutil
 import json
 import subprocess
+import threading
 import gspread
 from google.oauth2.service_account import Credentials
 import argparse
@@ -38,6 +39,12 @@ SLSKD_INBOX = SLSKD["inbox"]
 SLSKD_HEADERS = {"X-API-Key": SLSKD["api_key"]}
 
 MIN_BITRATE = 256
+AUDIO_EXTS = ('.mp3', '.flac')
+STOP_EVENT = threading.Event()
+
+def check_stop():
+    if STOP_EVENT.is_set():
+        raise SystemExit("Detenido por el usuario.")
 SEARCH_WAIT_SEC = 12
 DOWNLOAD_WAIT_SEC = 240
 
@@ -53,31 +60,35 @@ def slskd_post(path, payload):
     return r.json() if r.content else None
 
 # para comprobar que esté arrancado el slskd
+def slskd_logged_in():
+    app = slskd_get("/application")
+    return 'LoggedIn' in str(app.get('server', {}).get('state', ''))
+
 def ensure_slskd():
-    # si ya esta
+    """Devuelve el proceso si lo arrancamos nosotros, None si ya corria."""
+    proc = None
     try:
-        slskd_get("/application")
-        return
+        if slskd_logged_in():
+            return None
+        print("slskd arrancado pero sin conectar a Soulseek, esperando...")
     except requests.exceptions.ConnectionError:
-        pass
+        exe = SLSKD.get("exe")
+        if not exe or not os.path.exists(exe):
+            raise SystemExit("slskd no responde y no encuentro el exe (campo 'exe' en slskd_config.json).")
+        print("Arrancando slskd...")
+        proc = subprocess.Popen([exe], creationflags=subprocess.CREATE_NO_WINDOW)
 
-    exe = SLSKD["exe"]
-    if not exe or not os.path.exists(exe):
-        raise SystemExit("slskd no responde y no encuentro el exe (campo 'exe' en slskd_config.json).")
-
-    # si no estaba
-    print("Arrancando slskd...")
-    proc = subprocess.Popen([exe], creationflags=subprocess.CREATE_NO_WINDOW)
-    for _ in range(30):
+    for _ in range(60):
         time.sleep(1)
         try:
-            slskd_get("/application")
-            print("slskd listo.")
-            return
+            if slskd_logged_in():
+                print("slskd conectado a Soulseek.")
+                return proc
         except requests.exceptions.ConnectionError:
             continue
-    proc.terminate()
-    raise SystemExit("slskd no ha arrancado en 30 segundos.")
+    if proc:
+        proc.terminate()
+    raise SystemExit("slskd no ha conectado con Soulseek en 60 segundos.")
 
 # para pararlo
 def stop_slskd(proc):
@@ -115,10 +126,14 @@ def sanitize_filename(name):
     name = name.replace('"', "'")
     return re.sub(r'[<>:"/\\|?*]', '', name).strip()
 
+GENERIC_WORDS = {'mix', 'remix', 'edit', 'version', 'original', 'radio', 'extended',
+                 'feat', 'ft', 'vs', 'the', 'a', 'and', '&'}
+
 def loose_title(title):
     t = re.sub(r'[\(\[].*?[\)\]]', ' ', title)
     t = re.sub(r'[^\w\s]', ' ', t)
-    return re.sub(r'\s+', ' ', t).strip()
+    words = [w for w in t.split() if w.lower() not in GENERIC_WORDS]
+    return ' '.join(words) if words else t.strip()
 
 def strip_discogs_suffix(name):
     return re.sub(r'\s*\(\d+\)\s*$', '', name or '').strip()
@@ -210,6 +225,7 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
 
     deadline = time.time() + wait_sec
     while time.time() < deadline:
+        check_stop()
         time.sleep(1)
         state = slskd_get(f"/searches/{search_id}")
         # state es un texto tipo "InProgress" o "Completed, TimedOut"
@@ -230,11 +246,17 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
 
     transfer = None
     deadline = time.time() + wait_sec
-    while time.time() < deadline:
-        time.sleep(2)
-        transfer = find_transfer(username, file_info['filename'])
-        if transfer and transfer['state'].startswith("Completed"):
-            break
+    try:
+        while time.time() < deadline:
+            check_stop()
+            time.sleep(2)
+            transfer = find_transfer(username, file_info['filename'])
+            if transfer and transfer['state'].startswith("Completed"):
+                break
+    except SystemExit:
+        if transfer:
+            slskd_remove_transfer(username, transfer['id'])
+        raise
 
     if not transfer:
         print("   > slskd no registra la transferencia")
@@ -253,10 +275,27 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
 
     final_file = output_path + ".mp3"
     os.makedirs(os.path.dirname(final_file), exist_ok=True)
-    shutil.move(matches[0], final_file)
+    if candidate['ext'] == '.flac':
+        ok = convert_to_mp3(matches[0], final_file)
+        os.remove(matches[0])
+        if not ok:
+            final_file = None
+    else:
+        shutil.move(matches[0], final_file)
     cleanup_empty_dirs(os.path.dirname(matches[0]))
     slskd_remove_transfer(username, transfer['id'])
     return final_file
+
+def convert_to_mp3(src, dst):
+    print("   > Convirtiendo FLAC a MP3 320...")
+    cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', src,
+           '-codec:a', 'libmp3lame', '-b:a', '320k', '-map_metadata', '0', dst]
+    try:
+        subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"   > FFmpeg Error: {e}")
+        return False
 
 
 REMIX_KEYWORDS = ['remix', 'bootleg', 'edit', 'mix', 'refix', 'rmx']
@@ -280,7 +319,8 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
         for f in resp.get('files', []):
             if f.get('isLocked'):
                 continue
-            if not f['filename'].lower().endswith('.mp3'):
+            ext = os.path.splitext(f['filename'])[1].lower()
+            if ext not in AUDIO_EXTS:
                 continue
 
             match_text, base = result_display_name(f['filename'])
@@ -320,10 +360,10 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                     current_tolerance = 240
                     penalty -= 50
                 else:
-                    penalty += 200
+                    continue
             elif is_generic_remix_req:
-                if not any(kw in base_lower for kw in REMIX_KEYWORDS) and diff > 5:
-                    penalty += 100
+                if not any(kw in base_lower for kw in REMIX_KEYWORDS):
+                    continue
             else:
                 if any(kw in base_lower for kw in REMIX_KEYWORDS) and diff > 5:
                     penalty += 100
@@ -333,13 +373,16 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
             # --- nuevo: calidad y disponibilidad ---
             bitrate = f.get('bitRate') or 0
-            is_vbr = f.get('isVariableBitRate', False)
-            if bitrate and bitrate < MIN_BITRATE and not (is_vbr and bitrate >= 220):
-                continue
-            if not bitrate:
-                penalty += 25
-            elif bitrate < 320:
-                penalty += 10
+            if ext == '.flac':
+                penalty += 5
+            else:
+                is_vbr = f.get('isVariableBitRate', False)
+                if bitrate and bitrate < MIN_BITRATE and not (is_vbr and bitrate >= 220):
+                    continue
+                if not bitrate:
+                    penalty += 25
+                elif bitrate < 320:
+                    penalty += 10
             if not resp.get('hasFreeUploadSlot', True):
                 penalty += 30
             penalty += min(resp.get('queueLength', 0), 50)
@@ -354,6 +397,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                     'title': base,
                     'duration': val_dur,
                     'bitrate': bitrate,
+                    'ext': ext,
                     'upload_speed': resp.get('uploadSpeed', 0),
                 })
 
@@ -376,12 +420,13 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
     exp_sec_int = int(expected_duration_sec)
     duration_fmt = f"{exp_sec_int//60}:{exp_sec_int%60:02d}"
 
-    attempts = [
-        {'source': 'Soulseek (Exact)', 'query': f"{search_artist} {title}"},
-        {'source': 'Soulseek (Loose)', 'query': f"{search_artist} {loose_title(title)}"},
-    ]
+    attempts = [{'source': 'Soulseek (Exact)', 'query': f"{search_artist} {title}"}]
+    if album_hint:
+        attempts.append({'source': 'Soulseek (Album)', 'query': album_hint})
+    attempts.append({'source': 'Soulseek (Loose)', 'query': f"{search_artist} {loose_title(title)}"})
     if loose_title(title).lower() != title.lower():
         attempts.append({'source': 'Soulseek (Title)', 'query': loose_title(title)})
+    attempts.append({'source': 'Soulseek (Artist)', 'query': search_artist})
 
     tried = set()   # (usuario, fichero) ya intentados, para no repetir entre busquedas
 
@@ -450,13 +495,14 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
     for worksheet in sheet.worksheets():
         rows = worksheet.get_all_values()
         vol_match = re.search(r'\d+', worksheet.title)
-        album_hint = f"The {spreadsheet_name} {vol_match.group(0)} full album" if vol_match else None
+        album_hint = f"{spreadsheet_name} {vol_match.group(0)}" if vol_match else None
 
         # 3.1 Si no hay filas o solo hay una (header), salto esta hoja
         if len(rows) < 2: continue
         
         # 3.2 Por cada fila (excepto la primera que es el header), miro a ver que hago
         for i in range(1, len(rows)):
+            check_stop()
             row = rows[i]
             row_num = i + 1
             
@@ -481,7 +527,11 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
                 
                 exp_seconds = parse_duration(duration_str)
-                final_path = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
+                try:
+                    final_path = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
+                except SystemExit:
+                    worksheet.update_cell(row_num, COL_STATUS + 1, "")
+                    raise
                 
                 # si ha funcionado, pongo los tags
                 if final_path:
@@ -511,6 +561,7 @@ def run_manager(spreadsheet_name):
     print(f"Spreadsheet: {spreadsheet_name}")
     print(f"Guardando en: {download_dir}")
 
+    STOP_EVENT.clear()
     slskd_proc = None
     try:
         slskd_proc = ensure_slskd()
@@ -521,16 +572,15 @@ def run_manager(spreadsheet_name):
         process_sheet(client, spreadsheet_name, download_dir)
         print("\nFinished :)")
     except SystemExit as e:
-        print(f"Error: {e}")
+        print(f"\n{e}")
     except Exception as e:
         print(f"Global Error: {e}")
     finally:
         stop_slskd(slskd_proc)
 
 def stop_manager():
-    # Stops the manager by raising a SystemExit exception. This will terminate the program.
-    print("Stopping the manager...")
-    raise SystemExit("Manager stopped by user.")
+    print("Deteniendo...")
+    STOP_EVENT.set()
     
 
 def main():
