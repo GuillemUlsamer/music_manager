@@ -43,17 +43,17 @@ def load_config():
 def download_slskd(progress):
     """Baja la ultima release de slskd para Windows x64 y la descomprime en tools/slskd."""
     if SLSKD_EXE.exists():
-        progress("slskd ya descargado.")
+        progress("slskd already downloaded.")
         return
-    progress("Consultando ultima version de slskd...")
+    progress("Checking latest slskd version...")
     release = requests.get(GITHUB_LATEST, timeout=30, headers={'Accept': 'application/vnd.github+json'})
     release.raise_for_status()
     assets = release.json().get('assets', [])
     asset = next((a for a in assets if re.search(r'win-x64\.zip$', a['name'])), None)
     if not asset:
-        raise RuntimeError("No encuentro el zip de Windows en la release de slskd.")
+        raise RuntimeError("Could not find the Windows zip in the slskd release.")
 
-    progress(f"Descargando {asset['name']} ({asset['size'] // 1_000_000} MB)...")
+    progress(f"Downloading {asset['name']} ({asset['size'] // 1_000_000} MB)...")
     buf = io.BytesIO()
     with requests.get(asset['browser_download_url'], stream=True, timeout=60) as r:
         r.raise_for_status()
@@ -61,14 +61,14 @@ def download_slskd(progress):
         for chunk in r.iter_content(chunk_size=1 << 20):
             buf.write(chunk)
             done += len(chunk)
-            progress(f"Descargando slskd... {done * 100 // total}%")
+            progress(f"Downloading slskd... {done * 100 // total}%")
 
-    progress("Descomprimiendo slskd...")
+    progress("Extracting slskd...")
     SLSKD_DIR.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(buf) as z:
         z.extractall(SLSKD_DIR)
     if not SLSKD_EXE.exists():
-        raise RuntimeError("El zip no contenia slskd.exe donde esperaba.")
+        raise RuntimeError("The zip did not contain slskd.exe where expected.")
 
 
 def write_slskd_yml(username, password, api_key, share_dir=None):
@@ -124,20 +124,20 @@ searches:
 def run_setup(username, password, share_dir=None, credentials_src=None, progress=print):
     """Ejecuta todos los pasos. `progress` recibe mensajes de estado (str)."""
     if credentials_src and Path(credentials_src) != CREDENTIALS_FILE:
-        progress("Copiando credentials.json...")
+        progress("Copying credentials.json...")
         shutil.copyfile(credentials_src, CREDENTIALS_FILE)
     if not CREDENTIALS_FILE.exists():
-        raise RuntimeError("Falta credentials.json (cuenta de servicio de Google).")
+        raise RuntimeError("credentials.json is missing (Google service account).")
 
-    progress("Creando carpetas...")
+    progress("Creating folders...")
     for d in (TOOLS_DIR, INBOX_DIR, INCOMPLETE_DIR):
         d.mkdir(parents=True, exist_ok=True)
     if share_dir and not Path(share_dir).is_dir():
-        raise RuntimeError(f"La carpeta a compartir no existe: {share_dir}")
+        raise RuntimeError(f"Shared folder does not exist: {share_dir}")
 
     download_slskd(progress)
 
-    progress("Escribiendo configuracion de slskd...")
+    progress("Writing slskd configuration...")
     api_key = load_config().get('api_key') if CONFIG_FILE.exists() else None
     api_key = api_key or secrets.token_hex(24)
     write_slskd_yml(username, password, api_key, share_dir)
@@ -153,5 +153,5 @@ def run_setup(username, password, share_dir=None, credentials_src=None, progress
     }
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
-    progress("Configuracion completada.")
+    progress("Setup complete.")
     return config
