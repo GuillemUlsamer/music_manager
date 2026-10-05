@@ -134,7 +134,7 @@ def setup_gspread():
     return gspread.authorize(creds)
 
 IMAGE_URL_RE = re.compile(r'=IMAGE\(\s*"([^"]+)"', re.IGNORECASE)
-COVER_CACHE_DIR = SCRIPT_DIR / '.cache' / 'covers'
+COVER_CACHE_DIR = bootstrap.CACHE_DIR / 'covers'
 
 def _read_cover_url(client, spreadsheet_id):
     """Lee la formula de C2 (primera pestana) con una sola llamada a la API."""
@@ -627,7 +627,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 worksheet.update_cell(row_num, COL_STATUS + 1, "")
 
 def run_manager(spreadsheet_name):
-    download_dir = str(SCRIPT_DIR.parent / (spreadsheet_name.upper() + " PLAYLIST"))
+    download_dir = str(Path(cfg()['music_dir']) / (spreadsheet_name.upper() + " PLAYLIST"))
 
     print("\n\nRunning the playlist builder")
     print(f"Spreadsheet: {spreadsheet_name}")
