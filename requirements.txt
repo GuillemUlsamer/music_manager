@@ -1,10 +1,17 @@
-# Dependencia de sistema (NO se instala con pip, es un binario):
-#   FFmpeg + ffprobe, necesarios para convertir el audio a MP3.
-#   Windows : winget install --id Gyan.FFmpeg -e
-
+# --- Dependencias de sistema (NO se instalan con pip) ---
+#   slskd  : cliente Soulseek con API REST. https://github.com/slskd/slskd/releases
+#            Descomprimir, apuntar su ruta en slskd_config.json ("exe") y configurar
+#            %LOCALAPPDATA%\slskd\slskd.yml (ver slskd.yml de este repo como plantilla).
+#   FFmpeg : convierte FLAC a MP3 320. Windows: winget install --id Gyan.FFmpeg -e
+#
+# --- Ficheros locales que NO estan en git (crear en cada maquina) ---
+#   credentials.json    : cuenta de servicio de Google (Sheets + Drive)
+#   slskd_config.json   : copiar slskd_config.example.json y rellenar
+#
+# --- Paquetes Python ---
 gspread
 google-auth
-yt-dlp
-mutagen
 requests
+mutagen
 pillow
+yt-dlp
