@@ -37,7 +37,7 @@ def cfg():
     global _CONFIG
     if _CONFIG is None:
         if not bootstrap.is_configured():
-            raise SystemExit("Music Manager no esta configurado: abre gui.py y completa el primer arranque.")
+            raise SystemExit("Music Manager is not set up yet: open gui.py and complete the first-run setup.")
         _CONFIG = bootstrap.load_config()
     return _CONFIG
 
@@ -56,7 +56,7 @@ STOP_EVENT = threading.Event()
 
 def check_stop():
     if STOP_EVENT.is_set():
-        raise SystemExit("Detenido por el usuario.")
+        raise SystemExit("Stopped by user.")
 SEARCH_WAIT_SEC = 5
 DOWNLOAD_WAIT_SEC = 240
 
@@ -82,31 +82,31 @@ def ensure_slskd():
     try:
         if slskd_logged_in():
             return None
-        print("slskd arrancado pero sin conectar a Soulseek, esperando...")
+        print("slskd is running but not connected to Soulseek yet, waiting...")
     except requests.exceptions.ConnectionError:
         exe, app_dir = cfg()['exe'], cfg()['app_dir']
         if not os.path.exists(exe):
-            raise SystemExit(f"No encuentro slskd en {exe}. Vuelve a ejecutar la configuracion inicial.")
-        print("Arrancando slskd...")
+            raise SystemExit(f"slskd not found at {exe}. Run the first-run setup again.")
+        print("Starting slskd...")
         proc = subprocess.Popen([exe, '--app-dir', app_dir], creationflags=subprocess.CREATE_NO_WINDOW)
 
     for _ in range(60):
         time.sleep(1)
         try:
             if slskd_logged_in():
-                print("slskd conectado a Soulseek.")
+                print("slskd connected to Soulseek.")
                 return proc
         except requests.exceptions.ConnectionError:
             continue
     if proc:
         proc.terminate()
-    raise SystemExit("slskd no ha conectado con Soulseek en 60 segundos.")
+    raise SystemExit("slskd did not connect to Soulseek within 60 seconds.")
 
 # para pararlo
 def stop_slskd(proc):
     if proc is None:
         return
-    print("Cerrando slskd...")
+    print("Shutting down slskd...")
     proc.terminate()
     try:
         proc.wait(timeout=10)
@@ -324,7 +324,7 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
         raise
 
     if not transfer:
-        print("   > slskd no registra la transferencia")
+        print("   > slskd has no record of the transfer")
         return None
 
     if 'Succeeded' not in transfer['state']:
@@ -334,7 +334,7 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
 
     matches = glob.glob(os.path.join(slskd_inbox(), '**', glob.escape(remote_name)), recursive=True)
     if not matches:
-        print(f"   > Descargado pero no lo encuentro en {slskd_inbox()}")
+        print(f"   > Downloaded but not found in {slskd_inbox()}")
         slskd_remove_transfer(username, transfer['id'])
         return None
 
@@ -359,7 +359,7 @@ def ffmpeg_exe():
         return 'ffmpeg'
 
 def convert_to_mp3(src, dst):
-    print("   > Convirtiendo FLAC a MP3 320...")
+    print("   > Converting FLAC to MP3 320...")
     cmd = [ffmpeg_exe(), '-y', '-loglevel', 'error', '-i', src,
            '-codec:a', 'libmp3lame', '-b:a', '320k', '-map_metadata', '0', dst]
     try:
@@ -629,9 +629,9 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
 def run_manager(spreadsheet_name):
     download_dir = str(SCRIPT_DIR.parent / (spreadsheet_name.upper() + " PLAYLIST"))
 
-    print("\n\nEjecutando El creador de playlists")
+    print("\n\nRunning the playlist builder")
     print(f"Spreadsheet: {spreadsheet_name}")
-    print(f"Guardando en: {download_dir}")
+    print(f"Saving to: {download_dir}")
 
     STOP_EVENT.clear()
     slskd_proc = None
@@ -640,7 +640,7 @@ def run_manager(spreadsheet_name):
         client = setup_gspread()
         if not client:
             return
-        print("\nMirando a ver que quieres...")
+        print("\nChecking what you want...")
         process_sheet(client, spreadsheet_name, download_dir)
         print("\nFinished :)")
     except SystemExit as e:
@@ -651,7 +651,7 @@ def run_manager(spreadsheet_name):
         stop_slskd(slskd_proc)
 
 def stop_manager():
-    print("Deteniendo...")
+    print("Stopping...")
     STOP_EVENT.set()
     
 
