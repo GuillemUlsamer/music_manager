@@ -1,9 +1,13 @@
-import tkinter as tk
-from tkinter import scrolledtext
-import threading
+import io
 import sys
+import threading
+import tkinter as tk
+from tkinter import scrolledtext, ttk, filedialog
 
-import music_manager
+from PIL import Image, ImageOps, ImageTk
+
+import bootstrap
+import music_manager_v2 as music_manager
 
 
 class StdoutRedirector:
@@ -70,49 +74,226 @@ class MusicManagerGUI:
         self.root = root
         self.root.title("Music Manager")
         self.root.geometry("1200x520")
+        self.playlist_name = None
 
-        # Fila superior: nombre del spreadsheet + botón
-        top_frame = tk.Frame(root, pady=10)
+        self._build_setup()
+        self._build_picker()
+        self._build_runner()
+
+        sys.stdout = StdoutRedirector(self.log_box)
+        if bootstrap.is_configured():
+            self.show_picker()
+        else:
+            self.show_setup()
+
+    # pantalla 0: primer arranque
+    def _build_setup(self):
+        self.setup = tk.Frame(self.root, padx=40, pady=30)
+        tk.Label(self.setup, text="Primer arranque: configurar Music Manager",
+                 font=("TkDefaultFont", 13, "bold")).pack(anchor="w", pady=(0, 4))
+        tk.Label(self.setup, anchor="w", justify="left", wraplength=800,
+                 text="Se descargara slskd (cliente de Soulseek) y se configurara solo. "
+                      "Si el usuario de Soulseek no existe, se crea con esta contrasena.").pack(anchor="w", pady=(0, 16))
+
+        form = tk.Frame(self.setup)
+        form.pack(anchor="w", fill=tk.X)
+        form.columnconfigure(1, weight=1)
+
+        self.setup_user = self._form_row(form, 0, "Usuario de Soulseek:")
+        self.setup_pass = self._form_row(form, 1, "Contrasena de Soulseek:", show="*")
+        self.setup_share = self._form_row(form, 2, "Carpeta a compartir (opcional):",
+                                          browse=lambda: self._pick_dir(self.setup_share))
+        self.setup_creds = self._form_row(form, 3, "credentials.json de Google:",
+                                          browse=lambda: self._pick_file(self.setup_creds))
+        if bootstrap.CREDENTIALS_FILE.exists():
+            self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
+
+        self.setup_button = tk.Button(self.setup, text="Configurar", cursor="hand2", command=self.start_setup)
+        self.setup_button.pack(anchor="w", pady=(18, 10))
+        self.setup_progress = ttk.Progressbar(self.setup, mode="indeterminate", length=400)
+        self.setup_status = tk.Label(self.setup, text="", anchor="w", justify="left", wraplength=800)
+        self.setup_status.pack(anchor="w")
+
+    def _form_row(self, parent, row, label, show=None, browse=None):
+        tk.Label(parent, text=label, anchor="w").grid(row=row, column=0, sticky="w", pady=4)
+        entry = tk.Entry(parent, show=show) if show else tk.Entry(parent)
+        entry.grid(row=row, column=1, sticky="ew", padx=8, pady=4)
+        if browse:
+            tk.Button(parent, text="...", cursor="hand2", command=browse).grid(row=row, column=2, pady=4)
+        return entry
+
+    def _pick_dir(self, entry):
+        path = filedialog.askdirectory(title="Carpeta a compartir en Soulseek")
+        if path:
+            entry.delete(0, tk.END)
+            entry.insert(0, path)
+
+    def _pick_file(self, entry):
+        path = filedialog.askopenfilename(title="credentials.json", filetypes=[("JSON", "*.json")])
+        if path:
+            entry.delete(0, tk.END)
+            entry.insert(0, path)
+
+    def start_setup(self):
+        user = self.setup_user.get().strip()
+        pwd = self.setup_pass.get()
+        share = self.setup_share.get().strip() or None
+        creds = self.setup_creds.get().strip() or None
+        if not user or not pwd:
+            self.setup_status.config(text="Usuario y contrasena de Soulseek son obligatorios.")
+            return
+        if not creds:
+            self.setup_status.config(text="Selecciona el credentials.json de Google.")
+            return
+        self.setup_button.config(state="disabled")
+        self.setup_progress.pack(anchor="w", pady=(0, 8), before=self.setup_status)
+        self.setup_progress.start(12)
+        threading.Thread(target=self._setup_thread, args=(user, pwd, share, creds), daemon=True).start()
+
+    def _setup_thread(self, user, pwd, share, creds):
+        progress = lambda msg: self.root.after(0, self.setup_status.config, {"text": msg})
+        try:
+            bootstrap.run_setup(user, pwd, share, creds, progress=progress)
+            error = None
+        except Exception as e:
+            error = e
+        self.root.after(0, self._on_setup_done, error)
+
+    def _on_setup_done(self, error):
+        self.setup_progress.stop()
+        self.setup_progress.pack_forget()
+        self.setup_button.config(state="normal")
+        if error:
+            self.setup_status.config(text=f"Error: {error}")
+            return
+        self.show_picker()
+
+    def show_setup(self):
+        self.picker.pack_forget()
+        self.runner.pack_forget()
+        self.setup.pack(fill=tk.BOTH, expand=True)
+
+    # pantalla de selección de playlist
+    THUMB = 160
+    COLS = 6
+
+    def _build_picker(self):
+        self.picker = tk.Frame(self.root, padx=10, pady=10)
+
+        tk.Label(self.picker, text="Elige una playlist de tu Drive:",
+                 font=("TkDefaultFont", 11, "bold")).pack(anchor="w")
+
+        # Canvas con scroll que contiene el frame de tarjetas
+        grid_frame = tk.Frame(self.picker)
+        grid_frame.pack(fill=tk.BOTH, expand=True, pady=8)
+        self.canvas = tk.Canvas(grid_frame, highlightthickness=0)
+        scrollbar = tk.Scrollbar(grid_frame, orient="vertical", command=self.canvas.yview)
+        self.cards = tk.Frame(self.canvas)
+        self.cards.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.create_window((0, 0), window=self.cards, anchor="nw")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.canvas.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(-e.delta // 120, "units"))
+
+        buttons = tk.Frame(self.picker)
+        buttons.pack(fill=tk.X)
+        self.picker_status = tk.Label(buttons, text="", anchor="w")
+        self.picker_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.refresh_button = tk.Button(buttons, text="Actualizar", cursor="hand2", command=self.load_playlists)
+        self.refresh_button.pack(side=tk.LEFT)
+
+        self.thumbs = []   # referencias a las PhotoImage: si se pierden, Tk las borra
+
+    def load_playlists(self):
+        self.refresh_button.config(state="disabled")
+        self.picker_status.config(text="Cargando playlists de Drive...")
+        threading.Thread(target=self._load_playlists_thread, daemon=True).start()
+
+    def _load_playlists_thread(self):
+        try:
+            playlists = music_manager.list_playlists()
+            error = None
+        except Exception as e:
+            playlists, error = [], e
+        self.root.after(0, self._on_playlists_loaded, playlists, error)
+
+    def _on_playlists_loaded(self, playlists, error):
+        self.refresh_button.config(state="normal")
+        if error:
+            self.picker_status.config(text=f"No se pudieron cargar las playlists: {error}")
+            return
+        for w in self.cards.winfo_children():
+            w.destroy()
+        self.thumbs.clear()
+
+        for i, p in enumerate(playlists):
+            photo = self._make_thumb(p['image'])
+            self.thumbs.append(photo)
+            card = tk.Frame(self.cards, padx=8, pady=8, cursor="hand2")
+            card.grid(row=i // self.COLS, column=i % self.COLS, padx=6, pady=6)
+            img_label = tk.Label(card, image=photo, bd=1, relief="solid")
+            img_label.pack()
+            txt_label = tk.Label(card, text=p['title'], wraplength=self.THUMB, justify="center")
+            txt_label.pack(pady=(6, 0))
+            for w in (card, img_label, txt_label):
+                w.bind("<Button-1>", lambda e, name=p['title']: self.open_playlist(name))
+
+        self.picker_status.config(text=f"{len(playlists)} playlists disponibles.")
+
+    def _make_thumb(self, image_bytes):
+        if image_bytes:
+            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            img = ImageOps.fit(img, (self.THUMB, self.THUMB))
+        else:
+            img = Image.new("RGB", (self.THUMB, self.THUMB), "#dddddd")
+        return ImageTk.PhotoImage(img)
+
+    def open_playlist(self, name):
+        self.playlist_name = name
+        self.show_runner()
+
+    # pantalla de descarga
+    def _build_runner(self):
+        self.runner = tk.Frame(self.root)
+
+        top_frame = tk.Frame(self.runner, pady=10)
         top_frame.pack(fill=tk.X, padx=10)
-
-        tk.Label(top_frame, text="Nombre de la Playlist:").pack(side=tk.LEFT)
-
-        self.name_entry = tk.Entry(top_frame, cursor="xterm")
-        self.name_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
-        self.name_entry.bind("<Return>", lambda event: self.start_run())
-
+        self.back_button = tk.Button(top_frame, text="< Playlists", cursor="hand2", command=self.show_picker)
+        self.back_button.pack(side=tk.LEFT, padx=(0, 12))
+        self.title_label = tk.Label(top_frame, text="", font=("TkDefaultFont", 11, "bold"), anchor="w")
+        self.title_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.run_button = tk.Button(top_frame, text="Ejecutar", cursor="hand2", command=self.start_run)
         self.run_button.pack(side=tk.LEFT)
 
-        # Log
-        self.log_box = scrolledtext.ScrolledText(root, cursor="arrow", wrap=tk.WORD, state="normal")
+        self.log_box = scrolledtext.ScrolledText(self.runner, cursor="arrow", wrap=tk.WORD, state="normal")
         self.log_box.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
-        # Fila inferior: Status label + botón Detener
-        bottom_frame = tk.Frame(root)
+        bottom_frame = tk.Frame(self.runner)
         bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         self.status_label = tk.Label(bottom_frame, text="Listo.", anchor="w")
         self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # Stop button
         self.stop_button = tk.Button(bottom_frame, text="Detener", cursor="hand2", command=self._on_stop)
         self.stop_button.pack(side=tk.LEFT)
 
-        # Redirigimos los print() de music_manager.py hacia el log_box
-        sys.stdout = StdoutRedirector(self.log_box)
+    def show_picker(self):
+        self.setup.pack_forget()
+        self.runner.pack_forget()
+        self.picker.pack(fill=tk.BOTH, expand=True)
+        self.load_playlists()
+
+    def show_runner(self):
+        self.picker.pack_forget()
+        self.title_label.config(text=self.playlist_name)
+        self.status_label.config(text="Listo.")
+        self.runner.pack(fill=tk.BOTH, expand=True)
+        self.start_run()
 
     def start_run(self):
-        name = self.name_entry.get().strip()
-        if not name:
-            self.status_label.config(text="Escribe un nombre de spreadsheet primero.")
-            return
-
-        # Evitar lanzar dos ejecuciones a la vez
         self.run_button.config(state="disabled")
-        self.status_label.config(text=f"Ejecutando: {name} ...")
-
-        # Lanzamos la descarga en un hilo aparte para que la ventana no se congele
-        thread = threading.Thread(target=self._run_in_thread, args=(name,), daemon=True)
+        self.back_button.config(state="disabled")
+        self.status_label.config(text=f"Ejecutando: {self.playlist_name} ...")
+        thread = threading.Thread(target=self._run_in_thread, args=(self.playlist_name,), daemon=True)
         thread.start()
 
     def _run_in_thread(self, name):
@@ -126,12 +307,12 @@ class MusicManagerGUI:
 
     def _on_finished(self):
         self.run_button.config(state="normal")
+        self.back_button.config(state="normal")
         self.status_label.config(text="Listo.")
 
     def _on_stop(self):
         self.status_label.config(text="Deteniendo...")
         music_manager.stop_manager()
-
 
 if __name__ == "__main__":
     root = tk.Tk()

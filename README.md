@@ -81,11 +81,15 @@ function onOpen() { General_music_manager.onOpen(); }
 
 function showImportDialog() { General_music_manager.showImportDialog(); }
 
+function showListImportDialog() { General_music_manager.showListImportDialog(); }
+
 function showSetupDialog() { General_music_manager.showSetupDialog(); }
 
 function setupSheet(sheetFileName, volNum) { General_music_manager.setupSheet(sheetFileName, volNum); }
 
 function importDiscogsRelease(sheetName, releaseId) { General_music_manager.importDiscogsRelease(sheetName, releaseId); }
+
+function importDiscogsList (listId) { General_music_manager.importDiscogsList(); }
 
 function getOrCreateReleasesSheet(spreadsheet) { General_music_manager.getOrCreateReleasesSheet(spreadsheet); }
 
