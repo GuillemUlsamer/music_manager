@@ -2,10 +2,11 @@ import io
 import sys
 import threading
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, ttk, filedialog
 
 from PIL import Image, ImageOps, ImageTk
 
+import bootstrap
 import music_manager_v2 as music_manager
 
 
@@ -75,11 +76,102 @@ class MusicManagerGUI:
         self.root.geometry("1200x520")
         self.playlist_name = None
 
+        self._build_setup()
         self._build_picker()
         self._build_runner()
 
         sys.stdout = StdoutRedirector(self.log_box)
+        if bootstrap.is_configured():
+            self.show_picker()
+        else:
+            self.show_setup()
+
+    # pantalla 0: primer arranque
+    def _build_setup(self):
+        self.setup = tk.Frame(self.root, padx=40, pady=30)
+        tk.Label(self.setup, text="Primer arranque: configurar Music Manager",
+                 font=("TkDefaultFont", 13, "bold")).pack(anchor="w", pady=(0, 4))
+        tk.Label(self.setup, anchor="w", justify="left", wraplength=800,
+                 text="Se descargara slskd (cliente de Soulseek) y se configurara solo. "
+                      "Si el usuario de Soulseek no existe, se crea con esta contrasena.").pack(anchor="w", pady=(0, 16))
+
+        form = tk.Frame(self.setup)
+        form.pack(anchor="w", fill=tk.X)
+        form.columnconfigure(1, weight=1)
+
+        self.setup_user = self._form_row(form, 0, "Usuario de Soulseek:")
+        self.setup_pass = self._form_row(form, 1, "Contrasena de Soulseek:", show="*")
+        self.setup_share = self._form_row(form, 2, "Carpeta a compartir (opcional):",
+                                          browse=lambda: self._pick_dir(self.setup_share))
+        self.setup_creds = self._form_row(form, 3, "credentials.json de Google:",
+                                          browse=lambda: self._pick_file(self.setup_creds))
+        if bootstrap.CREDENTIALS_FILE.exists():
+            self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
+
+        self.setup_button = tk.Button(self.setup, text="Configurar", cursor="hand2", command=self.start_setup)
+        self.setup_button.pack(anchor="w", pady=(18, 10))
+        self.setup_progress = ttk.Progressbar(self.setup, mode="indeterminate", length=400)
+        self.setup_status = tk.Label(self.setup, text="", anchor="w", justify="left", wraplength=800)
+        self.setup_status.pack(anchor="w")
+
+    def _form_row(self, parent, row, label, show=None, browse=None):
+        tk.Label(parent, text=label, anchor="w").grid(row=row, column=0, sticky="w", pady=4)
+        entry = tk.Entry(parent, show=show) if show else tk.Entry(parent)
+        entry.grid(row=row, column=1, sticky="ew", padx=8, pady=4)
+        if browse:
+            tk.Button(parent, text="...", cursor="hand2", command=browse).grid(row=row, column=2, pady=4)
+        return entry
+
+    def _pick_dir(self, entry):
+        path = filedialog.askdirectory(title="Carpeta a compartir en Soulseek")
+        if path:
+            entry.delete(0, tk.END)
+            entry.insert(0, path)
+
+    def _pick_file(self, entry):
+        path = filedialog.askopenfilename(title="credentials.json", filetypes=[("JSON", "*.json")])
+        if path:
+            entry.delete(0, tk.END)
+            entry.insert(0, path)
+
+    def start_setup(self):
+        user = self.setup_user.get().strip()
+        pwd = self.setup_pass.get()
+        share = self.setup_share.get().strip() or None
+        creds = self.setup_creds.get().strip() or None
+        if not user or not pwd:
+            self.setup_status.config(text="Usuario y contrasena de Soulseek son obligatorios.")
+            return
+        if not creds:
+            self.setup_status.config(text="Selecciona el credentials.json de Google.")
+            return
+        self.setup_button.config(state="disabled")
+        self.setup_progress.pack(anchor="w", pady=(0, 8), before=self.setup_status)
+        self.setup_progress.start(12)
+        threading.Thread(target=self._setup_thread, args=(user, pwd, share, creds), daemon=True).start()
+
+    def _setup_thread(self, user, pwd, share, creds):
+        progress = lambda msg: self.root.after(0, self.setup_status.config, {"text": msg})
+        try:
+            bootstrap.run_setup(user, pwd, share, creds, progress=progress)
+            error = None
+        except Exception as e:
+            error = e
+        self.root.after(0, self._on_setup_done, error)
+
+    def _on_setup_done(self, error):
+        self.setup_progress.stop()
+        self.setup_progress.pack_forget()
+        self.setup_button.config(state="normal")
+        if error:
+            self.setup_status.config(text=f"Error: {error}")
+            return
         self.show_picker()
+
+    def show_setup(self):
+        self.picker.pack_forget()
+        self.runner.pack_forget()
+        self.setup.pack(fill=tk.BOTH, expand=True)
 
     # pantalla de selección de playlist
     THUMB = 160
@@ -185,6 +277,7 @@ class MusicManagerGUI:
         self.stop_button.pack(side=tk.LEFT)
 
     def show_picker(self):
+        self.setup.pack_forget()
         self.runner.pack_forget()
         self.picker.pack(fill=tk.BOTH, expand=True)
         self.load_playlists()

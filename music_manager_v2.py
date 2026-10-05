@@ -24,21 +24,31 @@ warnings.filterwarnings('ignore', message='.*Python version.*past its end of lif
 
 # --- CONFIGURATION ---
 # Rutas ancladas a la carpeta del script, no al directorio desde el que se ejecuta.
-SCRIPT_DIR = Path(__file__).resolve().parent
-CREDENTIALS_FILE = SCRIPT_DIR / 'credentials.json'
-SLSKD_CONFIG_FILE = SCRIPT_DIR / 'slskd_config.json'
+import bootstrap
 
-def load_slskd_config():
-    if not SLSKD_CONFIG_FILE.exists():
-        raise SystemExit(f"Falta {SLSKD_CONFIG_FILE}")
-    with open(SLSKD_CONFIG_FILE, encoding='utf-8') as f:
-        return json.load(f)
+SCRIPT_DIR = bootstrap.SCRIPT_DIR
+CREDENTIALS_FILE = bootstrap.CREDENTIALS_FILE
 
-# cosas del slskd
-SLSKD = load_slskd_config()
-SLSKD_URL = SLSKD["url"]
-SLSKD_INBOX = SLSKD["inbox"]
-SLSKD_HEADERS = {"X-API-Key": SLSKD["api_key"]}
+# La configuracion la genera bootstrap.run_setup() en el primer arranque.
+# Se carga bajo demanda para que la GUI pueda importar este modulo antes de configurar.
+_CONFIG = None
+
+def cfg():
+    global _CONFIG
+    if _CONFIG is None:
+        if not bootstrap.is_configured():
+            raise SystemExit("Music Manager no esta configurado: abre gui.py y completa el primer arranque.")
+        _CONFIG = bootstrap.load_config()
+    return _CONFIG
+
+def slskd_url():
+    return cfg()['url']
+
+def slskd_headers():
+    return {"X-API-Key": cfg()['api_key']}
+
+def slskd_inbox():
+    return cfg()['inbox']
 
 MIN_BITRATE = 256
 AUDIO_EXTS = ('.mp3', '.flac')
@@ -52,12 +62,12 @@ DOWNLOAD_WAIT_SEC = 240
 
 # api del slskd
 def slskd_get(path, **params):
-    r = requests.get(f"{SLSKD_URL}{path}", headers=SLSKD_HEADERS, params=params, timeout=10)
+    r = requests.get(f"{slskd_url()}{path}", headers=slskd_headers(), params=params, timeout=10)
     r.raise_for_status()
     return r.json()
 
 def slskd_post(path, payload):
-    r = requests.post(f"{SLSKD_URL}{path}", headers=SLSKD_HEADERS, json=payload, timeout=10)
+    r = requests.post(f"{slskd_url()}{path}", headers=slskd_headers(), json=payload, timeout=10)
     r.raise_for_status()
     return r.json() if r.content else None
 
@@ -74,11 +84,11 @@ def ensure_slskd():
             return None
         print("slskd arrancado pero sin conectar a Soulseek, esperando...")
     except requests.exceptions.ConnectionError:
-        exe = SLSKD.get("exe")
-        if not exe or not os.path.exists(exe):
-            raise SystemExit("slskd no responde y no encuentro el exe (campo 'exe' en slskd_config.json).")
+        exe, app_dir = cfg()['exe'], cfg()['app_dir']
+        if not os.path.exists(exe):
+            raise SystemExit(f"No encuentro slskd en {exe}. Vuelve a ejecutar la configuracion inicial.")
         print("Arrancando slskd...")
-        proc = subprocess.Popen([exe], creationflags=subprocess.CREATE_NO_WINDOW)
+        proc = subprocess.Popen([exe, '--app-dir', app_dir], creationflags=subprocess.CREATE_NO_WINDOW)
 
     for _ in range(60):
         time.sleep(1)
@@ -220,7 +230,7 @@ def check_title_similarity(request_title, result_title):
     return (len(common) / len(req_w)) >= 0.6
 
 def cleanup_empty_dirs(path):
-    inbox = os.path.abspath(SLSKD_INBOX)
+    inbox = os.path.abspath(slskd_inbox())
     path = os.path.abspath(path)
     while path.startswith(inbox) and path != inbox:
         try:
@@ -262,9 +272,9 @@ def find_transfer(username, filename):
     return None
 
 def slskd_remove_transfer(username, transfer_id):
-    base = f"{SLSKD_URL}/transfers/downloads/{quote(username, safe='')}/{transfer_id}"
-    requests.delete(base, headers=SLSKD_HEADERS, timeout=10)                       # cancela
-    requests.delete(base, headers=SLSKD_HEADERS, params={'remove': 'true'}, timeout=10)  # borra
+    base = f"{slskd_url()}/transfers/downloads/{quote(username, safe='')}/{transfer_id}"
+    requests.delete(base, headers=slskd_headers(), timeout=10)                       # cancela
+    requests.delete(base, headers=slskd_headers(), params={'remove': 'true'}, timeout=10)  # borra
 
 def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
     search = slskd_post("/searches", {"searchText": query})
@@ -280,7 +290,7 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
             break
 
     if not state["state"].startswith("Completed"):
-        requests.put(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10)
+        requests.put(f"{slskd_url()}/searches/{search_id}", headers=slskd_headers(), timeout=10)
         for _ in range(10):
             time.sleep(0.5)
             state = slskd_get(f"/searches/{search_id}")
@@ -288,7 +298,7 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
                 break
 
     responses = slskd_get(f"/searches/{search_id}/responses")
-    requests.delete(f"{SLSKD_URL}/searches/{search_id}", headers=SLSKD_HEADERS, timeout=10)
+    requests.delete(f"{slskd_url()}/searches/{search_id}", headers=slskd_headers(), timeout=10)
     return responses
 
 def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
@@ -322,9 +332,9 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
         slskd_remove_transfer(username, transfer['id'])
         return None
 
-    matches = glob.glob(os.path.join(SLSKD_INBOX, '**', glob.escape(remote_name)), recursive=True)
+    matches = glob.glob(os.path.join(slskd_inbox(), '**', glob.escape(remote_name)), recursive=True)
     if not matches:
-        print(f"   > Descargado pero no lo encuentro en {SLSKD_INBOX}")
+        print(f"   > Descargado pero no lo encuentro en {slskd_inbox()}")
         slskd_remove_transfer(username, transfer['id'])
         return None
 
@@ -341,9 +351,16 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
     slskd_remove_transfer(username, transfer['id'])
     return final_file
 
+def ffmpeg_exe():
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return 'ffmpeg'
+
 def convert_to_mp3(src, dst):
     print("   > Convirtiendo FLAC a MP3 320...")
-    cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', src,
+    cmd = [ffmpeg_exe(), '-y', '-loglevel', 'error', '-i', src,
            '-codec:a', 'libmp3lame', '-b:a', '320k', '-map_metadata', '0', dst]
     try:
         subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
