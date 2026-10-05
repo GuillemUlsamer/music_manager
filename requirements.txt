@@ -1,8 +1,10 @@
-# Dependencia de sistema (NO se instala con pip, es un binario):
-#   FFmpeg + ffprobe, necesarios para convertir el audio a MP3.
-#   Windows : winget install --id Gyan.FFmpeg -e
-
+# Instalacion: pip install -r requirements.txt && python gui.py
+# El primer arranque descarga slskd y genera toda su configuracion en tools/.
+# Lo unico que hay que tener a mano es credentials.json (cuenta de servicio de Google).
 gspread
 google-auth
-yt-dlp
+requests
 mutagen
+pillow
+imageio-ffmpeg
+yt-dlp
