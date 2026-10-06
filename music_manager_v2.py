@@ -23,14 +23,11 @@ from pathlib import Path
 warnings.filterwarnings('ignore', message='.*Python version.*past its end of life.*')
 
 # --- CONFIGURATION ---
-# Rutas ancladas a la carpeta del script, no al directorio desde el que se ejecuta.
 import bootstrap
 
 SCRIPT_DIR = bootstrap.SCRIPT_DIR
 CREDENTIALS_FILE = bootstrap.CREDENTIALS_FILE
 
-# La configuracion la genera bootstrap.run_setup() en el primer arranque.
-# Se carga bajo demanda para que la GUI pueda importar este modulo antes de configurar.
 _CONFIG = None
 
 def cfg():
@@ -77,7 +74,6 @@ def slskd_logged_in():
     return 'LoggedIn' in str(app.get('server', {}).get('state', ''))
 
 def ensure_slskd():
-    """Devuelve el proceso si lo arrancamos nosotros, None si ya corria."""
     proc = None
     try:
         if slskd_logged_in():
@@ -137,10 +133,9 @@ IMAGE_URL_RE = re.compile(r'=IMAGE\(\s*"([^"]+)"', re.IGNORECASE)
 COVER_CACHE_DIR = bootstrap.CACHE_DIR / 'covers'
 
 def _read_cover_url(client, spreadsheet_id):
-    """Lee la formula de C2 (primera pestana) con una sola llamada a la API."""
     params = {'valueRenderOption': 'FORMULA'}
     try:
-        data = client.http_client.values_get(spreadsheet_id, 'C2', params=params)
+        data = client.http_client.values_get(spreadsheet_id, 'C2', params=params) # donde está la portada
     except AttributeError:   # gspread < 6
         data = client.open_by_key(spreadsheet_id).values_get('C2', params=params)
     values = data.get('values') or [['']]
@@ -148,7 +143,6 @@ def _read_cover_url(client, spreadsheet_id):
     return match.group(1) if match else None
 
 def fetch_image(url, timeout=10):
-    """Descarga una portada, con cache en disco para no repetir descargas."""
     COVER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cached = COVER_CACHE_DIR / (hashlib.sha1(url.encode()).hexdigest() + '.img')
     if cached.exists():
@@ -159,7 +153,6 @@ def fetch_image(url, timeout=10):
     return r.content
 
 def list_playlists(with_images=True, workers=8):
-    """Una entrada por spreadsheet accesible: titulo, URL de portada y bytes de la imagen."""
     client = setup_gspread()
     if not client:
         return []
@@ -400,7 +393,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 continue
             strong_match = is_strong_track_match(search_artist, title, match_text)
 
-            # --- duracion (misma logica que v1, mas el caso "desconocida") ---
+            # le damos puntuacion segun lo que dura
             val_dur = f.get('length') or 0
             penalty = 0
             if val_dur and expected_duration_sec > 0:
@@ -424,7 +417,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 if expected_duration_sec > 0:
                     penalty += 30      # no podemos verificar: peor que uno verificado
 
-            # --- remix (igual que v1) ---
+            # por si es un remix
             base_lower = base.lower().replace('`', "'").replace('’', "'")
             current_tolerance = tolerance
             if specific_remix:
@@ -443,7 +436,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             if strong_match:
                 penalty -= 20
 
-            # --- nuevo: calidad y disponibilidad ---
+            # mirar la calidad del archivo 
             bitrate = f.get('bitRate') or 0
             if ext == '.flac':
                 penalty += 5
