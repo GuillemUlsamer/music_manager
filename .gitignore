@@ -9,3 +9,6 @@ _test/
 diag_search.py
 tools/
 config.json
+installer/
+build/
+dist/
