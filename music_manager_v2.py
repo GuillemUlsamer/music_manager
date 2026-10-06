@@ -15,6 +15,7 @@ from google.oauth2.service_account import Credentials
 import argparse
 import requests
 from mutagen.easyid3 import EasyID3
+from mutagen.id3 import ID3, APIC, ID3NoHeaderError
 from mutagen.mp3 import MP3
 from urllib.parse import quote
 from pathlib import Path
@@ -187,6 +188,26 @@ def loose_title(title):
 
 def strip_discogs_suffix(name):
     return re.sub(r'\s*\(\d+\)\s*$', '', name or '').strip()
+
+SHORT_UPPER = {'dj', 'mc', 'vs', 'ft', 'ep', 'lp', 'uk', 'usa', 'nl'}
+
+# por si viene en mayusculas todo
+def smart_title(text):
+    if text != text.upper() or not any(c.isalpha() for c in text):
+        return text
+    words = []
+    for w in text.split(' '):
+        words.append(w.upper() if w.lower() in SHORT_UPPER else w.capitalize())
+    return ' '.join(words)
+
+def clean_artist(name):
+    name = strip_discogs_suffix(name)
+    name = re.sub(r'^\s*DJ\s+', '', name, flags=re.IGNORECASE)
+    return smart_title(re.sub(r'\s+', ' ', name).strip())
+
+def clean_title(name):
+    name = name.replace('`', "'").replace('’', "'")
+    return smart_title(re.sub(r'\s+', ' ', name).strip())
 
 # para limpiar el formato de duración, que tenga sentido
 def parse_duration(duration_val):
@@ -529,7 +550,7 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
     print("   > No matching track found in any source.")
     return None
 
-def tag_file(filepath, artist, title, album):
+def tag_file(filepath, artist, title, album, year='', track_no='', cover_bytes=None):
     try:
         audio = MP3(filepath, ID3=EasyID3)
         try:
@@ -539,8 +560,18 @@ def tag_file(filepath, artist, title, album):
         audio['artist'] = artist
         audio['title'] = title
         audio['album'] = album
+        if year:
+            audio['date'] = str(year)
+        if track_no:
+            audio['tracknumber'] = str(track_no)
         audio.save()
-        # print(f"Tagged: {filepath}")
+
+        if cover_bytes:
+            tags = ID3(filepath)
+            tags.delall('APIC')
+            mime = 'image/png' if cover_bytes[:4] == b'\x89PNG' else 'image/jpeg'
+            tags.add(APIC(encoding=3, mime=mime, type=3, desc='Cover', data=cover_bytes))
+            tags.save(v2_version=3)
     except Exception as e:
         print(f"Error tagging {filepath}: {e}")
 
@@ -560,6 +591,16 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
     for worksheet in sheet.worksheets():
         rows = worksheet.get_all_values()
         vol_match = re.search(r'\d+', worksheet.title)
+        album_name = f"{spreadsheet_name} {vol_match.group(0)}" if vol_match else spreadsheet_name
+        header = rows[0] if rows else []
+        album_year = header[9] if len(header) > 9 else ''      # J1
+        cover_url = header[10] if len(header) > 10 else ''     # K1
+        cover_bytes = None
+        if cover_url:
+            try:
+                cover_bytes = fetch_image(cover_url)
+            except Exception as e:
+                print(f"   > Cover not available: {e}")
         album_hint = f"{spreadsheet_name} {vol_match.group(0)}" if vol_match else None
 
         # 3.1 Si no hay filas o solo hay una (header), salto esta hoja
@@ -574,8 +615,9 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
             # Miro si la fila tiene cancion (si no hay checkbox, no hay cancion, asi que la salto)
             if len(row) <= COL_CHECKBOX: continue
             
-            artist = row[COL_ARTIST]
-            title = row[COL_TITLE]
+            artist = clean_artist(row[COL_ARTIST])
+            title = clean_title(row[COL_TITLE])
+            track_no = row[0].strip()
             duration_str = row[COL_DURATION]
             is_checked = row[COL_CHECKBOX].lower() == 'true'
             status = row[COL_STATUS] if len(row) > COL_STATUS else ""
@@ -600,7 +642,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 
                 # si ha funcionado, pongo los tags
                 if final_path:
-                    tag_file(final_path, artist, title, worksheet.title)
+                    tag_file(final_path, artist, title, album_name, album_year, track_no, cover_bytes)
                     worksheet.update_cell(row_num, COL_STATUS + 1, "Downloaded")
                     print("   > Done.")
                 else:
