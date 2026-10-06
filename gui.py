@@ -101,9 +101,12 @@ class MusicManagerGUI:
 
         self.setup_user = self._form_row(form, 0, "Soulseek username:")
         self.setup_pass = self._form_row(form, 1, "Soulseek password:", show="*")
-        self.setup_share = self._form_row(form, 2, "Folder to share (optional):",
-                                          browse=lambda: self._pick_dir(self.setup_share))
-        self.setup_creds = self._form_row(form, 3, "Google credentials.json:",
+        self.setup_music = self._form_row(form, 2, "Music folder:",
+                                          browse=lambda: self._pick_dir(self.setup_music, "Music folder"))
+        self.setup_music.insert(0, str(bootstrap.DEFAULT_MUSIC_DIR))
+        self.setup_share = self._form_row(form, 3, "Folder to share (optional):",
+                                          browse=lambda: self._pick_dir(self.setup_share, "Folder to share on Soulseek"))
+        self.setup_creds = self._form_row(form, 4, "Google credentials.json:",
                                           browse=lambda: self._pick_file(self.setup_creds))
         if bootstrap.CREDENTIALS_FILE.exists():
             self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
@@ -122,8 +125,8 @@ class MusicManagerGUI:
             tk.Button(parent, text="...", cursor="hand2", command=browse).grid(row=row, column=2, pady=4)
         return entry
 
-    def _pick_dir(self, entry):
-        path = filedialog.askdirectory(title="Folder to share on Soulseek")
+    def _pick_dir(self, entry, title):
+        path = filedialog.askdirectory(title=title)
         if path:
             entry.delete(0, tk.END)
             entry.insert(0, path)
@@ -137,10 +140,14 @@ class MusicManagerGUI:
     def start_setup(self):
         user = self.setup_user.get().strip()
         pwd = self.setup_pass.get()
+        music = self.setup_music.get().strip()
         share = self.setup_share.get().strip() or None
         creds = self.setup_creds.get().strip() or None
         if not user or not pwd:
             self.setup_status.config(text="Soulseek username and password are required.")
+            return
+        if not music:
+            self.setup_status.config(text="Choose a music folder.")
             return
         if not creds:
             self.setup_status.config(text="Select your Google credentials.json.")
@@ -148,12 +155,12 @@ class MusicManagerGUI:
         self.setup_button.config(state="disabled")
         self.setup_progress.pack(anchor="w", pady=(0, 8), before=self.setup_status)
         self.setup_progress.start(12)
-        threading.Thread(target=self._setup_thread, args=(user, pwd, share, creds), daemon=True).start()
+        threading.Thread(target=self._setup_thread, args=(user, pwd, music, share, creds), daemon=True).start()
 
-    def _setup_thread(self, user, pwd, share, creds):
+    def _setup_thread(self, user, pwd, music, share, creds):
         progress = lambda msg: self.root.after(0, self.setup_status.config, {"text": msg})
         try:
-            bootstrap.run_setup(user, pwd, share, creds, progress=progress)
+            bootstrap.run_setup(user, pwd, music, share, creds, progress=progress)
             error = None
         except Exception as e:
             error = e
