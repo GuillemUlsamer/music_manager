@@ -7,7 +7,8 @@ from tkinter import scrolledtext, ttk, filedialog
 from PIL import Image, ImageOps, ImageTk
 
 import bootstrap
-import music_manager_v2 as music_manager
+import manager as music_manager
+import sheets
 
 
 class StdoutRedirector:
@@ -219,7 +220,7 @@ class MusicManagerGUI:
 
     def _load_playlists_thread(self):
         try:
-            playlists = music_manager.list_playlists()
+            playlists = sheets.list_playlists()
             error = None
         except Exception as e:
             playlists, error = [], e
