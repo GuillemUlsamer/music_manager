@@ -11,3 +11,5 @@ tools/
 config.json
 build/
 dist/
+desktop.ini
+installer/
