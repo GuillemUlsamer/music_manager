@@ -11,7 +11,7 @@ from config import cfg, slskd_url, slskd_headers, slskd_inbox
 from stop import check_stop
 
 SEARCH_WAIT_SEC = 5
-
+QUEUE_WAIT_SEC = 45
 DOWNLOAD_WAIT_SEC = 240
 
 # api del slskd
@@ -126,14 +126,30 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
                [{"filename": file_info['filename'], "size": file_info['size']}])
 
     transfer = None
+    last_state = None
+    queued_since = None
     deadline = time.time() + wait_sec
     try:
         while time.time() < deadline:
             check_stop()
             time.sleep(2)
             transfer = find_transfer(username, file_info['filename'])
-            if transfer and transfer['state'].startswith("Completed"):
+            if not transfer:
+                continue
+            state = transfer['state']
+            if state != last_state:
+                print(f"   > {state}")
+                last_state = state
+            if state.startswith("Completed"):
                 break
+            if 'Queued' in state:
+                queued_since = queued_since or time.time()
+                if time.time() - queued_since > QUEUE_WAIT_SEC:
+                    print("   > Still queued, trying the next user")
+                    slskd_remove_transfer(username, transfer['id'])
+                    return None
+            else:
+                queued_since = None
     except SystemExit:
         if transfer:
             slskd_remove_transfer(username, transfer['id'])
