@@ -36,6 +36,7 @@ class StdoutRedirector:
     def _append(self, message):
         # Cada print() puede traer varias líneas pegadas (por los \n);
         # las separamos para poder dar a cada una su propio color.
+        self.text_widget.config(state="normal")
         lines = message.split("\n")
         for idx, line in enumerate(lines):
             if line:
@@ -47,6 +48,7 @@ class StdoutRedirector:
             if idx < len(lines) - 1:
                 self.text_widget.insert(tk.END, "\n")
         self.text_widget.see(tk.END)
+        self.text_widget.config(state="disabled")
 
     def _classify(self, line):
         # Decide qué tag aplicar según el contenido de la línea.
@@ -274,7 +276,7 @@ class MusicManagerGUI:
         self.run_button = tk.Button(top_frame, text="Run", cursor="hand2", command=self.start_run)
         self.run_button.pack(side=tk.LEFT)
 
-        self.log_box = scrolledtext.ScrolledText(self.runner, cursor="arrow", wrap=tk.WORD, state="normal")
+        self.log_box = scrolledtext.ScrolledText(self.runner, cursor="arrow", wrap=tk.WORD, state="disabled")
         self.log_box.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
 
         bottom_frame = tk.Frame(self.runner)
