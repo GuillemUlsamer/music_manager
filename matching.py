@@ -34,9 +34,12 @@ def check_title_similarity(request_title, result_title):
     res_w = get_words(result_title)
     
     if not req_w: return True 
-    common = req_w.intersection(res_w)
-    # si al menos la mitad de las palabras coinciden, lo consideramos suficientemente similar
-    return (len(common) / len(req_w)) >= 0.6
+    req_w = get_words(request_title)
+    res_w = get_words(result_title)
+    core = (req_w - GENERIC_WORDS) or req_w
+
+    common = core.intersection(res_w)
+    return (len(common) / len(core)) >= 0.6
 
 def normalize_for_match(s):
     s = s.replace('`', "'").replace('’', "'").lower()
