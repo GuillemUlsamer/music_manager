@@ -4,7 +4,7 @@ from tagging import strip_discogs_suffix
 from matching import loose_title, score_candidates
 from slskd_client import slskd_search, slskd_download
 
-MAX_DOWNLOAD_TRIES = 4  
+MAX_DOWNLOAD_TRIES = 6  
 
 def download_track(artist, title, output_path, expected_duration_sec=0, tolerance=60, album_hint=None):
     search_artist = strip_discogs_suffix(artist)
