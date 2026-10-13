@@ -2,9 +2,8 @@ import os
 import re
 
 MIN_BITRATE = 256
-
+LOW_BITRATE = 192
 AUDIO_EXTS = ('.mp3', '.flac')
-
 GENERIC_WORDS = {'mix', 'remix', 'edit', 'version', 'original', 'radio', 'extended',
                  'feat', 'ft', 'vs', 'the', 'a', 'and', '&'}
 
@@ -78,17 +77,22 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
         specific_remix = remix_match.group(1).lower().replace('`', "'").replace('’', "'")
     is_generic_remix_req = any(x in title.lower() for x in REMIX_KEYWORDS)
 
+    rejected = []
     viable = []
+    fallback = []
     for resp in responses:
         for f in resp.get('files', []):
             if f.get('isLocked'):
+                rejected['locked'] += 1
                 continue
             ext = os.path.splitext(f['filename'])[1].lower()
             if ext not in AUDIO_EXTS:
+                rejected[f'format {ext}'] += 1
                 continue
 
             match_text, base = result_display_name(f['filename'])
             if not check_title_similarity(title, base):
+                rejected['title'] += 1
                 continue
             strong_match = is_strong_track_match(search_artist, title, match_text)
 
@@ -99,6 +103,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 duration_delta = val_dur - expected_duration_sec
                 diff = abs(duration_delta)
                 if diff > 600 and not strong_match:
+                    rejected['duration'] += 1
                     continue
                 under_tol, over_tol = tolerance, tolerance
                 if strong_match:
@@ -107,6 +112,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 else:
                     over_tol = max(tolerance * 2, 90)
                 if duration_delta < -under_tol or duration_delta > over_tol:
+                    rejected['duration'] += 1
                     continue
                 duration_weight = 1.20 if duration_delta < 0 else 0.45
                 duration_score = int(diff * duration_weight)
@@ -124,9 +130,11 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                     current_tolerance = 240
                     penalty -= 50
                 else:
+                    rejected['other remix'] += 1
                     continue
             elif is_generic_remix_req:
                 if not any(kw in base_lower for kw in REMIX_KEYWORDS):
+                    rejected['not a remix'] += 1
                     continue
             else:
                 if any(kw in base_lower for kw in REMIX_KEYWORDS) and diff > 5:
@@ -142,7 +150,10 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             else:
                 is_vbr = f.get('isVariableBitRate', False)
                 if bitrate and bitrate < MIN_BITRATE and not (is_vbr and bitrate >= 220):
-                    continue
+                    if bitrate < LOW_BITRATE:
+                        rejected[f'bitrate {bitrate}'] += 1
+                        continue
+                    low_quality = True
                 if not bitrate:
                     penalty += 25
                 elif bitrate < 320:
@@ -153,26 +164,37 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
             final_score = duration_score + penalty
             score_limit = current_tolerance + (60 if strong_match else 0) + 50
-            if final_score <= score_limit:
-                viable.append({
-                    'score': final_score,
-                    'username': resp['username'],
-                    'file': f,
-                    'title': base,
-                    'duration': val_dur,
-                    'bitrate': bitrate,
-                    'ext': ext,
-                    'upload_speed': resp.get('uploadSpeed', 0),
-                })
+            if final_score > score_limit:
+                rejected['score'] += 1
+                continue
+            candidate = {
+                'score': final_score,
+                'username': resp['username'],
+                'file': f,
+                'title': base,
+                'duration': val_dur,
+                'bitrate': bitrate,
+                'ext': ext,
+                'upload_speed': resp.get('uploadSpeed', 0),
+            }
+            (fallback if low_quality else viable).append(candidate)
 
-    seen = set()
-    unique = []
-    for c in viable:
-        key = (c['username'], c['title'].lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(c)
-    unique.sort(key=lambda c: (c['score'], -c['bitrate'], -c['upload_speed']))
-    return unique
+    def dedupe_sort(items):
+        seen = set()
+        unique = []
+        for c in items:
+            key = (c['username'], c['title'].lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(c)
+        unique.sort(key=lambda c: (c['score'], -c['bitrate'], -c['upload_speed']))
+        return unique
 
+    viable = dedupe_sort(viable)
+    fallback = dedupe_sort(fallback)
+    if not viable and not fallback and rejected:
+        print("   > Rejected: " + ", ".join(f"{v} {k}" for k, v in rejected.most_common()))
+    if fallback:
+        print(f"   > {len(fallback)} low-bitrate fallback(s)")
+    return viable + fallback
