@@ -18,7 +18,7 @@
   reescribir `config.json` y `slskd.yml`, reiniciar slskd si estaba abierto.
 - [ ] Boton "Copy output" al terminar: copia el log entero al portapapeles para pegarlo en una IA.
   `self.root.clipboard_append(self.log_box.get("1.0", tk.END))`
-- [ ] Fase 2: resumen automatico al acabar con las canciones a revisar. No necesita IA: guardar por
+- [ ] (parcial: ya se marca `Downloaded (verify)` en la hoja) Fase 2: resumen automatico al acabar con las canciones a revisar. No necesita IA: guardar por
   cancion durante la ejecucion si acabo en Failed, si el candidato tenia puntuacion floja o
   bitrate desconocido, si vino de FLAC convertido, si salio de la busqueda por album/artista en
   vez de la exacta.

@@ -1,5 +1,6 @@
 import os
 import re
+from collections import Counter
 
 MIN_BITRATE = 256
 LOW_BITRATE = 192
@@ -70,14 +71,21 @@ def result_display_name(filename):
     parent = parts[-2] if len(parts) > 1 else ''
     return f"{parent} {base}".strip(), base
 
-def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60, require_title=False):
+def context_terms(search_artist, album_hint=None):
+    terms = [normalize_for_match(p) for p in re.split(r'\s*(?:&|/|,|\bvs\.?|\bfeat\.?|\bft\.?)\s*', search_artist, flags=re.IGNORECASE)]
+    if album_hint:
+        terms.append(normalize_for_match(album_hint))
+    return [t for t in terms if len(t) >= 3]
+
+def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60, strict=False, album_hint=None):
     specific_remix = None
     remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
     if remix_match:
         specific_remix = remix_match.group(1).lower().replace('`', "'").replace('’', "'")
     is_generic_remix_req = any(x in title.lower() for x in REMIX_KEYWORDS)
 
-    rejected = []
+    rejected = Counter()
+    terms = context_terms(search_artist, album_hint) if strict else []
     viable = []
     fallback = []
     for resp in responses:
@@ -91,9 +99,14 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 continue
 
             match_text, base = result_display_name(f['filename'])
-            if require_title and normalize_for_match(loose_title(title)) not in normalize_for_match(base):
-                rejected['title'] += 1
-                continue
+            if strict:
+                if normalize_for_match(loose_title(title)) not in normalize_for_match(base):
+                    rejected['title'] += 1
+                    continue
+                path_norm = normalize_for_match(f['filename'])
+                if terms and not any(t in path_norm for t in terms):
+                    rejected['no artist/album in path'] += 1
+                    continue
             if not check_title_similarity(title, base):
                 rejected['title'] += 1
                 continue
@@ -101,6 +114,9 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
             # le damos puntuacion segun lo que dura
             val_dur = f.get('length') or 0
+            if strict and not val_dur:
+                rejected['no duration'] += 1
+                continue
             penalty = 0
             if val_dur and expected_duration_sec > 0:
                 duration_delta = val_dur - expected_duration_sec
