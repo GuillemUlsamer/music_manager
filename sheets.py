@@ -152,7 +152,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 
                 exp_seconds = parse_duration(duration_str)
                 try:
-                    final_path, verify = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
+                    final_path, note = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
                 except SystemExit:
                     worksheet.update_cell(row_num, COL_STATUS + 1, "")
                     raise
@@ -160,8 +160,8 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 # si ha funcionado, pongo los tags
                 if final_path:
                     tag_file(final_path, artist, title, album_name, album_year, track_no, cover_bytes)
-                    worksheet.update_cell(row_num, COL_STATUS + 1, "Downloaded (verify)" if verify else "Downloaded")
-                    print("   > Done (verify this one)." if verify else "   > Done.")
+                    worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded ({note})" if note else "Downloaded")
+                    print(f"   > Done ({note})." if note else "   > Done.")
                 else:
                     worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
                     print("   > Failed.")

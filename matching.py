@@ -4,6 +4,7 @@ from collections import Counter
 
 MIN_BITRATE = 256
 LOW_BITRATE = 192
+LAST_RESORT_BITRATE = 128
 AUDIO_EXTS = ('.mp3', '.flac')
 GENERIC_WORDS = {'mix', 'remix', 'edit', 'version', 'original', 'radio', 'extended',
                  'feat', 'ft', 'vs', 'the', 'a', 'and', '&'}
@@ -91,6 +92,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
     terms = context_terms(search_artist, album_hint) if strict else []
     viable = []
     fallback = []
+    last_resort = []
     for resp in responses:
         for f in resp.get('files', []):
             if f.get('isLocked'):
@@ -162,15 +164,19 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             # mirar la calidad del archivo 
             bitrate = f.get('bitRate') or 0
             low_quality = False
+            desperate = False
             if ext == '.flac':
                 penalty += 5
             else:
                 is_vbr = f.get('isVariableBitRate', False)
                 if bitrate and bitrate < MIN_BITRATE and not (is_vbr and bitrate >= 220):
-                    if bitrate < LOW_BITRATE:
+                    if bitrate < LAST_RESORT_BITRATE:
                         rejected[f'bitrate {bitrate}'] += 1
                         continue
-                    low_quality = True
+                    if bitrate < LOW_BITRATE:
+                        desperate = True
+                    else:
+                        low_quality = True
                 if not bitrate:
                     penalty += 25
                 elif bitrate < 320:
@@ -194,7 +200,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 'ext': ext,
                 'upload_speed': resp.get('uploadSpeed', 0),
             }
-            (fallback if low_quality else viable).append(candidate)
+            (last_resort if desperate else fallback if low_quality else viable).append(candidate)
 
     def dedupe_sort(items):
         seen = set()
@@ -210,8 +216,10 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
     viable = dedupe_sort(viable)
     fallback = dedupe_sort(fallback)
+    # acepta 128 kps si no hay nada mas, mejor eso que nada
+    last_resort = dedupe_sort(last_resort)
     if not viable and not fallback and rejected:
         print("   > Rejected: " + ", ".join(f"{v} {k}" for k, v in rejected.most_common()))
     if fallback:
         print(f"   > {len(fallback)} low-bitrate fallback(s)")
-    return viable + fallback
+    return viable + fallback, last_resort
