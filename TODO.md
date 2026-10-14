@@ -13,7 +13,7 @@
 - [ ] Reescribir para v2 (Soulseek/slskd, setup automatico, credentials.json). Aun habla de YouTube/yt-dlp.
 
 ## App
-- [ ] Boton de ajustes en la app ya configurada: reutilizar la pantalla de setup
+- [x] Boton de ajustes en la app ya configurada: reutilizar la pantalla de setup
   (usuario/password Soulseek, carpeta de musica, carpeta compartida, credentials.json),
   reescribir `config.json` y `slskd.yml`, reiniciar slskd si estaba abierto.
 - [ ] Boton "Copy output" al terminar: copia el log entero al portapapeles para pegarlo en una IA.

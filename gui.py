@@ -92,8 +92,8 @@ class MusicManagerGUI:
     # pantalla de configuracion del primer arranque
     def _build_setup(self):
         self.setup = tk.Frame(self.root, padx=40, pady=30)
-        tk.Label(self.setup, text="Set up Music Manager",
-                 font=("TkDefaultFont", 13, "bold")).pack(anchor="w", pady=(0, 4))
+        self.setup_title = tk.Label(self.setup, text="Set up Music Manager", font=("TkDefaultFont", 13, "bold"))
+        self.setup_title.pack(anchor="w", pady=(0, 4))
         tk.Label(self.setup, anchor="w", justify="left", wraplength=800,
                  text="slskd (the Soulseek client) will be downloaded and configured automatically. "
                       "If the Soulseek username does not exist yet, it will be created with this password.").pack(anchor="w", pady=(0, 16))
@@ -106,16 +106,16 @@ class MusicManagerGUI:
         self.setup_pass = self._form_row(form, 1, "Soulseek password:", show="*")
         self.setup_music = self._form_row(form, 2, "Music folder:",
                                           browse=lambda: self._pick_dir(self.setup_music, "Music folder"))
-        self.setup_music.insert(0, str(bootstrap.DEFAULT_MUSIC_DIR))
         self.setup_share = self._form_row(form, 3, "Folder to share (optional):",
                                           browse=lambda: self._pick_dir(self.setup_share, "Folder to share on Soulseek"))
         self.setup_creds = self._form_row(form, 4, "Google credentials.json:",
                                           browse=lambda: self._pick_file(self.setup_creds))
-        if bootstrap.CREDENTIALS_FILE.exists():
-            self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
 
-        self.setup_button = tk.Button(self.setup, text="Set up", cursor="hand2", command=self.start_setup)
-        self.setup_button.pack(anchor="w", pady=(18, 10))
+        actions = tk.Frame(self.setup)
+        actions.pack(anchor="w", pady=(18, 10))
+        self.setup_button = tk.Button(actions, text="Set up", cursor="hand2", command=self.start_setup)
+        self.setup_button.pack(side=tk.LEFT)
+        self.setup_cancel = tk.Button(actions, text="Cancel", cursor="hand2", command=self.show_picker)
         self.setup_progress = ttk.Progressbar(self.setup, mode="indeterminate", length=400)
         self.setup_status = tk.Label(self.setup, text="", anchor="w", justify="left", wraplength=800)
         self.setup_status.pack(anchor="w")
@@ -178,9 +178,29 @@ class MusicManagerGUI:
             return
         self.show_picker()
 
-    def show_setup(self):
+    def show_setup(self, editing=False):
         self.picker.pack_forget()
         self.runner.pack_forget()
+        for entry in (self.setup_user, self.setup_pass, self.setup_music, self.setup_share, self.setup_creds):
+            entry.delete(0, tk.END)
+        if editing:
+            cfg = bootstrap.load_config()
+            self.setup_user.insert(0, cfg.get('soulseek_username', ''))
+            self.setup_pass.insert(0, bootstrap.read_soulseek_password())
+            self.setup_music.insert(0, cfg.get('music_dir', ''))
+            self.setup_share.insert(0, cfg.get('share_dir', ''))
+            self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
+            self.setup_title.config(text="Settings")
+            self.setup_button.config(text="Save")
+            self.setup_cancel.pack(side=tk.LEFT, padx=(8, 0))
+        else:
+            self.setup_music.insert(0, str(bootstrap.DEFAULT_MUSIC_DIR))
+            if bootstrap.CREDENTIALS_FILE.exists():
+                self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
+            self.setup_title.config(text="Set up Music Manager")
+            self.setup_button.config(text="Set up")
+            self.setup_cancel.pack_forget()
+        self.setup_status.config(text="")
         self.setup.pack(fill=tk.BOTH, expand=True)
 
     # pantalla de selección de playlist
@@ -212,6 +232,8 @@ class MusicManagerGUI:
         self.picker_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.refresh_button = tk.Button(buttons, text="Refresh", cursor="hand2", command=self.load_playlists)
         self.refresh_button.pack(side=tk.LEFT)
+        tk.Button(buttons, text="Settings", cursor="hand2",
+                  command=lambda: self.show_setup(editing=True)).pack(side=tk.LEFT, padx=(8, 0))
 
         self.thumbs = []   # referencias a las PhotoImage: si se pierden, Tk las borra
 

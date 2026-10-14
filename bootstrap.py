@@ -48,6 +48,12 @@ def load_config():
     with open(CONFIG_FILE, encoding='utf-8') as f:
         return json.load(f)
 
+def read_soulseek_password():
+    if not SLSKD_YML.exists():
+        return ''
+    m = re.search(r'^\s*password:\s*"?(.*?)"?\s*$', SLSKD_YML.read_text(encoding='utf-8'), re.MULTILINE)
+    return m.group(1) if m else ''
+
 def download_slskd(progress):
     """Baja la ultima release de slskd para Windows x64 y la descomprime en tools/slskd."""
     if SLSKD_EXE.exists():
@@ -173,11 +179,10 @@ def ensure_slskd_yml():
     config = load_config()
     if config.get('yml_version', 0) >= YML_VERSION or not SLSKD_YML.exists():
         return
-    old = SLSKD_YML.read_text(encoding='utf-8')
-    m = re.search(r'^\s*password:\s*"?(.*?)"?\s*$', old, re.MULTILINE)
-    if not m:
+    password = read_soulseek_password()
+    if not password:
         return
-    write_slskd_yml(config['soulseek_username'], m.group(1), config['api_key'],
+    write_slskd_yml(config['soulseek_username'], password, config['api_key'],
                     config['music_dir'], config.get('share_dir') or None)
     config['yml_version'] = YML_VERSION
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
