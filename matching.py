@@ -71,6 +71,9 @@ def result_display_name(filename):
     parent = parts[-2] if len(parts) > 1 else ''
     return f"{parent} {base}".strip(), base
 
+def core_phrase(s):
+    return ' '.join(w for w in normalize_for_match(s).split() if w not in GENERIC_WORDS)
+
 def context_terms(search_artist, album_hint=None):
     terms = [normalize_for_match(p) for p in re.split(r'\s*(?:&|/|,|\bvs\.?|\bfeat\.?|\bft\.?)\s*', search_artist, flags=re.IGNORECASE)]
     if album_hint:
@@ -100,7 +103,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
             match_text, base = result_display_name(f['filename'])
             if strict:
-                if normalize_for_match(loose_title(title)) not in normalize_for_match(base):
+                if core_phrase(loose_title(title)) not in core_phrase(base):
                     rejected['title'] += 1
                     continue
                 path_norm = normalize_for_match(f['filename'])
@@ -164,6 +167,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
             # mirar la calidad del archivo 
             bitrate = f.get('bitRate') or 0
+            low_quality = False
             if ext == '.flac':
                 penalty += 5
             else:
