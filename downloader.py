@@ -25,11 +25,13 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
         print(f"\n   > Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
         try:
             responses = slskd_search(attempt['query'])
+        except requests.ConnectionError:
+            raise SystemExit("Lost connection to slskd.")
         except requests.RequestException as e:
             print(f"   > Search Error: {e}")
             continue
-
-        candidates = score_candidates(responses, search_artist, title, expected_duration_sec, tolerance)
+        strict = attempt['source'] not in ('Soulseek (Exact)', 'Soulseek (Loose)')
+        candidates = score_candidates(responses, search_artist, title, expected_duration_sec, tolerance, require_title=strict)
         print(f"   > {len(responses)} users, {len(candidates)} viable")
 
         tries = 0
@@ -46,6 +48,8 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
             print(f"   > Match: '{c['title']}' ({dur//60}:{dur%60:02d}, {c['bitrate'] or '?'}kbps) from {c['username']}")
             try:
                 final_file = slskd_download(c, output_path)
+            except requests.ConnectionError:
+                raise SystemExit("Lost connection to slskd.")
             except requests.RequestException as e:
                 print(f"   > Download Error: {e}")
                 continue

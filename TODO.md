@@ -24,16 +24,17 @@
   vez de la exacta.
 
 ## Robustez de red
-- [ ] `requests.Session()` en `slskd_client.py` (keep-alive) para no agotar sockets (WinError 10055).
-- [ ] En `downloader.py`, `except requests.ConnectionError: raise SystemExit(...)` antes del
+- [x] `requests.Session()` en `slskd_client.py` (keep-alive) para no agotar sockets (WinError 10055).
+- [x] En `downloader.py`, `except requests.ConnectionError: raise SystemExit(...)` antes del
   `RequestException`, para cortar la ejecucion si slskd cae en vez de marcar todo como Failed.
-- [ ] `distributed_network.disabled: true` en la plantilla de `slskd.yml` (`bootstrap.write_slskd_yml`).
+- [x] `distributed_network.disabled: true` en la plantilla de `slskd.yml` (`bootstrap.write_slskd_yml`).
+- [x] `YML_VERSION` + `ensure_slskd_yml()`: la app regenera su `slskd.yml` sola cuando cambia la plantilla.
 
 ## Scoring
-- [ ] Timeout de descarga por inactividad, no por tiempo total: en `slskd_download` reiniciar el
+- [x] Timeout de descarga por inactividad, no por tiempo total: en `slskd_download` reiniciar el
   contador cada vez que cambia `bytesTransferred`; solo rendirse tras DOWNLOAD_WAIT_SEC sin
   progreso (en wifi lento se cortaban descargas vivas con "Transfer ended: InProgress").
-- [ ] `require_title` en `score_candidates`: en las busquedas sin artista (Title, Artist, Album)
+- [x] `require_title` en `score_candidates`: en las busquedas sin artista (Title, Artist, Album)
   exigir que `normalize_for_match(loose_title(title))` este contenido en el nombre del fichero
   normalizado. El 60 % de palabras en comun deja pasar basura con titulos de palabras corrientes
   (ej. "No Hardcore No Life" -> "Life In The Air (Hardcore Heaven Mix)"). En Exact/Loose se

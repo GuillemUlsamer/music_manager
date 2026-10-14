@@ -70,7 +70,7 @@ def result_display_name(filename):
     parent = parts[-2] if len(parts) > 1 else ''
     return f"{parent} {base}".strip(), base
 
-def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60):
+def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60, require_title=False):
     specific_remix = None
     remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
     if remix_match:
@@ -91,6 +91,9 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 continue
 
             match_text, base = result_display_name(f['filename'])
+            if require_title and normalize_for_match(loose_title(title)) not in normalize_for_match(base):
+                rejected['title'] += 1
+                continue
             if not check_title_similarity(title, base):
                 rejected['title'] += 1
                 continue

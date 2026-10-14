@@ -32,6 +32,7 @@ DEFAULT_MUSIC_DIR = Path.home() / 'Music' / 'Music Manager'
 
 WEB_PORT = 5030
 LISTEN_PORT = 50300
+YML_VERSION = 2
 GITHUB_LATEST = 'https://api.github.com/repos/slskd/slskd/releases/latest'
 
 def inbox_dir(music_dir):
@@ -85,6 +86,8 @@ soulseek:
   password: "{password}"
   description: "music_manager"
   listen_port: {LISTEN_PORT}
+  distributed_network:
+    disabled: true
 
 directories:
   downloads: {inbox_dir(music_dir)}
@@ -158,8 +161,25 @@ def run_setup(username, password, music_dir, share_dir=None, credentials_src=Non
         'app_dir': str(SLSKD_APP_DIR),
         'soulseek_username': username,
         'share_dir': share_dir or '',
+        'yml_version': YML_VERSION,
     }
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
     progress("Setup complete.")
     return config
+
+def ensure_slskd_yml():
+    """Regenera slskd.yml si la plantilla ha cambiado desde que se escribio."""
+    config = load_config()
+    if config.get('yml_version', 0) >= YML_VERSION or not SLSKD_YML.exists():
+        return
+    old = SLSKD_YML.read_text(encoding='utf-8')
+    m = re.search(r'^\s*password:\s*"?(.*?)"?\s*$', old, re.MULTILINE)
+    if not m:
+        return
+    write_slskd_yml(config['soulseek_username'], m.group(1), config['api_key'],
+                    config['music_dir'], config.get('share_dir') or None)
+    config['yml_version'] = YML_VERSION
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+    print("slskd configuration updated.")
