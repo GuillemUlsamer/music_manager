@@ -16,7 +16,7 @@
 - [x] Boton de ajustes en la app ya configurada: reutilizar la pantalla de setup
   (usuario/password Soulseek, carpeta de musica, carpeta compartida, credentials.json),
   reescribir `config.json` y `slskd.yml`, reiniciar slskd si estaba abierto.
-- [ ] Boton "Copy output" al terminar: copia el log entero al portapapeles para pegarlo en una IA.
+- [x] Boton "Copy output" al terminar: copia el log entero al portapapeles para pegarlo en una IA.
   `self.root.clipboard_append(self.log_box.get("1.0", tk.END))`
 - [ ] (parcial: ya se marca `Downloaded (verify)` en la hoja) Fase 2: resumen automatico al acabar con las canciones a revisar. No necesita IA: guardar por
   cancion durante la ejecucion si acabo en Failed, si el candidato tenia puntuacion floja o

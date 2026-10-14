@@ -307,8 +307,15 @@ class MusicManagerGUI:
         bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         self.status_label = tk.Label(bottom_frame, text="Ready.", anchor="w")
         self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.copy_button = tk.Button(bottom_frame, text="Copy output", cursor="hand2", command=self._copy_output)
+        self.copy_button.pack(side=tk.LEFT, padx=(0, 8))
         self.stop_button = tk.Button(bottom_frame, text="Stop", cursor="hand2", command=self._on_stop)
         self.stop_button.pack(side=tk.LEFT)
+
+    def _copy_output(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.log_box.get("1.0", tk.END))
+        self.status_label.config(text="Output copied to clipboard.")
 
     def show_picker(self):
         self.setup.pack_forget()
