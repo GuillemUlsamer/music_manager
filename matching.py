@@ -110,7 +110,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 if terms and not any(t in path_norm for t in terms):
                     rejected['no artist/album in path'] += 1
                     continue
-            if not check_title_similarity(title, base):
+            if not (check_title_similarity(title, base) or check_title_similarity(loose_title(title), base)):
                 rejected['title'] += 1
                 continue
             strong_match = is_strong_track_match(search_artist, title, match_text)
