@@ -160,7 +160,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 # si ha funcionado, pongo los tags
                 if final_path:
                     tag_file(final_path, artist, title, album_name, album_year, track_no, cover_bytes)
-                    worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded ({note})" if note else "Downloaded")
+                    worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded")
                     print(f"   > Done ({note})." if note else "   > Done.")
                 else:
                     worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 

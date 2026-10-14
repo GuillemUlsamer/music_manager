@@ -60,9 +60,7 @@ class StdoutRedirector:
             return "match"
         if "downloading:" in lower or "downloading..." in lower:
             return "downloading"
-        if "> done (" in lower:
-            return "downloading"
-        if "> done." in lower or ("downloaded" in lower and "failed" not in lower):
+        if "> done" in lower or ("downloaded" in lower and "failed" not in lower):
             return "done"
         if "failed" in lower:
             return "failed"

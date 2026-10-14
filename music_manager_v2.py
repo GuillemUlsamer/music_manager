@@ -517,7 +517,7 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
     tried = set()   # (usuario, fichero) ya intentados, para no repetir entre busquedas
 
     for attempt in attempts:
-        print(f"\n   > Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
+        print(f"\n   > Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt})")
         try:
             responses = slskd_search(attempt['query'])
         except requests.RequestException as e:
