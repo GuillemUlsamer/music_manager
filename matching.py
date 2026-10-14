@@ -124,20 +124,14 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             if val_dur and expected_duration_sec > 0:
                 duration_delta = val_dur - expected_duration_sec
                 diff = abs(duration_delta)
-                if diff > 600 and not strong_match:
-                    rejected['duration'] += 1
-                    continue
-                under_tol, over_tol = tolerance, tolerance
-                if strong_match:
-                    under_tol = max(tolerance, 90)
-                    over_tol = max(tolerance * 5, 240)
-                else:
-                    over_tol = max(tolerance * 2, 90)
-                if duration_delta < -under_tol or duration_delta > over_tol:
-                    rejected['duration'] += 1
-                    continue
+                if not strong_match:
+                    if diff > 600 or duration_delta < -tolerance or duration_delta > max(tolerance * 2, 90):
+                        rejected['duration'] += 1
+                        continue
                 duration_weight = 1.20 if duration_delta < 0 else 0.45
                 duration_score = int(diff * duration_weight)
+                if strong_match:
+                    duration_score = min(duration_score, 40)
             else:
                 diff = 0
                 duration_score = 0
