@@ -79,13 +79,14 @@ def context_terms(search_artist, album_hint=None):
     terms = [normalize_for_match(p) for p in re.split(r'\s*(?:&|/|,|\bvs\.?|\bfeat\.?|\bft\.?)\s*', search_artist, flags=re.IGNORECASE)]
     if album_hint:
         terms.append(normalize_for_match(album_hint))
+        terms.append(normalize_for_match(re.sub(r'\d+', '', album_hint)))
     return [t for t in terms if len(t) >= 3]
 
 def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60, strict=False, album_hint=None):
     specific_remix = None
     remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
     if remix_match:
-        specific_remix = remix_match.group(1).lower().replace('`', "'").replace('’', "'")
+        specific_remix = core_phrase(remix_match.group(1)).split()   # palabras que identifican el remix, sin 'remix'/'mix'/'edit'
     is_generic_remix_req = any(x in title.lower() for x in REMIX_KEYWORDS)
 
     rejected = Counter()
@@ -105,7 +106,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
 
             match_text, base = result_display_name(f['filename'])
             if strict:
-                if core_phrase(loose_title(title)) not in core_phrase(base):
+                if core_phrase(loose_title(title)).replace(' ', '') not in core_phrase(base).replace(' ', ''):
                     rejected['title'] += 1
                     continue
                 path_norm = normalize_for_match(f['filename'])
@@ -144,14 +145,14 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             base_lower = base.lower().replace('`', "'").replace('’', "'")
             current_tolerance = tolerance
             if specific_remix:
-                if specific_remix in base_lower:
+                if all(w in normalize_for_match(base) for w in specific_remix):
                     current_tolerance = 240
                     penalty -= 50
                 else:
                     rejected['other remix'] += 1
                     continue
             elif is_generic_remix_req:
-                if not any(kw in base_lower for kw in REMIX_KEYWORDS):
+                if not any(kw in base_lower for kw in REMIX_KEYWORDS) or ('original' in base_lower and 'original' not in title.lower()):
                     rejected['not a remix'] += 1
                     continue
             else:
