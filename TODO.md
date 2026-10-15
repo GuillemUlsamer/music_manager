@@ -1,16 +1,16 @@
 # TODO
 
 ## Limpieza
-- [ ] Borrar `music_manager_v2.py`, `music_manager.py` (`diag_search.py` ya borrado).
-- [ ] Quitar `yt-dlp` de `requirements.txt`.
-- [ ] Commit y push.
+- [x] Borrar `music_manager_v2.py`, `music_manager.py` (`diag_search.py` ya borrado).
+- [x] Quitar `yt-dlp` de `requirements.txt`.
+- [x] Commit y push.
 
 ## Release automatica
-- [ ] `.github/workflows/release.yml`: con un tag `v2.x.x`, construir con PyInstaller + Inno Setup en runner Windows y subir `MusicManagerSetup-<ver>.exe` a GitHub Releases.
-- [ ] El instalador nunca se commitea; va a Releases.
+- [x] `.github/workflows/release.yml`: con un tag `v2.x.x`, construir con PyInstaller + Inno Setup en runner Windows y subir `MusicManagerSetup-<ver>.exe` a GitHub Releases.
+- [x] El instalador nunca se commitea; va a Releases.
 
 ## README
-- [ ] Reescribir para v2 (Soulseek/slskd, setup automatico, credentials.json). Aun habla de YouTube/yt-dlp.
+- [x] Reescribir para v2 (Soulseek/slskd, setup automatico, credentials.json). Aun habla de YouTube/yt-dlp.
 
 ## App
 - [ ] En la hoja, no escribir el bitrate: `Downloaded (128 kbps)` -> `Downloaded`. Mantener
