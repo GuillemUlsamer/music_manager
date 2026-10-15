@@ -17,12 +17,12 @@ DOWNLOAD_WAIT_SEC = 240
 
 # api del slskd
 def slskd_get(path, **params):
-    r = SESSION.get(f"{slskd_url()}{path}", headers=slskd_headers(), params=params, timeout=10)
+    r = SESSION.get(f"{slskd_url()}{path}", headers=slskd_headers(), params=params, timeout=30)
     r.raise_for_status()
     return r.json()
 
 def slskd_post(path, payload):
-    r = SESSION.post(f"{slskd_url()}{path}", headers=slskd_headers(), json=payload, timeout=10)
+    r = SESSION.post(f"{slskd_url()}{path}", headers=slskd_headers(), json=payload, timeout=30)
     r.raise_for_status()
     return r.json() if r.content else None
 
@@ -170,7 +170,11 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
         slskd_remove_transfer(username, transfer['id'])
         return None
 
-    matches = glob.glob(os.path.join(slskd_inbox(), '**', glob.escape(remote_name)), recursive=True)
+    for _ in range(10):   # slskd marca Succeeded un instante antes de mover el fichero al inbox
+        matches = glob.glob(os.path.join(slskd_inbox(), '**', glob.escape(remote_name)), recursive=True)
+        if matches:
+            break
+        time.sleep(1)
     if not matches:
         print(f"   > Downloaded but not found in {slskd_inbox()}")
         slskd_remove_transfer(username, transfer['id'])

@@ -11,6 +11,7 @@ GENERIC_WORDS = {'mix', 'remix', 'edit', 'version', 'original', 'radio', 'extend
 
 def loose_title(title):
     t = re.sub(r'[\(\[].*?[\)\]]', ' ', title)
+    t = re.sub(r"[`'’]", '', t)   # They're -> Theyre, no They re
     t = re.sub(r'[^\w\s]', ' ', t)
     words = [w for w in t.split() if w.lower() not in GENERIC_WORDS]
     return ' '.join(words) if words else t.strip()
@@ -43,7 +44,7 @@ def check_title_similarity(request_title, result_title):
     return (len(common) / len(core)) >= 0.6
 
 def normalize_for_match(s):
-    s = s.replace('`', "'").replace('’', "'").lower()
+    s = re.sub(r"[`'’]", '', s).lower()
     return re.sub(r'[^a-z0-9]+', ' ', s).strip()
 
 def is_strong_track_match(request_artist, request_title, result_title):
@@ -82,7 +83,7 @@ def context_terms(search_artist, album_hint=None):
         terms.append(normalize_for_match(re.sub(r'\d+', '', album_hint)))
     return [t for t in terms if len(t) >= 3]
 
-def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60, strict=False, album_hint=None):
+def score_candidates(responses, search_artist, title, expected_duration_sec=0, tolerance=60, strict=False, album_hint=None, skip_remix_check=False):
     specific_remix = None
     remix_match = re.search(r'\(([^)]*(?:Remix|Mix|Edit|Bootleg)[^)]*)\)', title, re.IGNORECASE)
     if remix_match:
@@ -144,8 +145,10 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             # por si es un remix
             base_lower = base.lower().replace('`', "'").replace('’', "'")
             current_tolerance = tolerance
-            if specific_remix:
-                if all(w in normalize_for_match(base) for w in specific_remix):
+            if skip_remix_check:   # dentro de la carpeta del album solo esta esa version
+                pass
+            elif specific_remix:
+                if ''.join(specific_remix) in normalize_for_match(base).replace(' ', ''):
                     current_tolerance = 240
                     penalty -= 50
                 else:

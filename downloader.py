@@ -18,7 +18,8 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
     core_words = [w for w in loose_title(title).split() if w.lower() not in GENERIC_WORDS]
     if loose_title(title).lower() != title.lower() and len(core_words) >= 2:
         attempts.append({'source': 'Soulseek (Title)', 'query': loose_title(title)})
-    attempts.append({'source': 'Soulseek (Artist)', 'query': search_artist})
+    if ' ' in search_artist.strip() or len(search_artist.strip()) > 5:   # 'Perry', 'Neo', 'Alien': miles de resultados y nada util
+        attempts.append({'source': 'Soulseek (Artist)', 'query': search_artist})
 
     tried = set()   # (usuario, fichero) ya intentados, para no repetir entre busquedas
     last_resort = []   # ficheros a 128-191 kbps, solo si todo lo demas falla
@@ -41,7 +42,8 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                 continue
             strict = attempt['source'] not in ('Soulseek (Exact)', 'Soulseek (Loose)')
             candidates, desperate = score_candidates(responses, search_artist, title, expected_duration_sec, tolerance,
-                                                     strict=strict, album_hint=album_hint)
+                                                     strict=strict, album_hint=album_hint,
+                                                     skip_remix_check=(attempt['source'] == 'Soulseek (Album)'))
             last_resort += desperate
             print(f"   > {len(responses)} users, {len(candidates)} viable")
 

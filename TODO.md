@@ -13,6 +13,11 @@
 - [ ] Reescribir para v2 (Soulseek/slskd, setup automatico, credentials.json). Aun habla de YouTube/yt-dlp.
 
 ## App
+- [ ] Puerto de escucha de Soulseek configurable (campo en Settings, guardado en config.json) o
+  elegir uno libre automaticamente. Ahora LISTEN_PORT=50300 fijo en bootstrap; si Windows lo
+  reserva (rangos de Hyper-V/WinNAT, `netsh interface ipv4 show excludedportrange protocol=tcp`)
+  slskd no arranca y la app se queda "esperando a slskd". Al regenerar el yml se pierde un cambio
+  manual.
 - [x] Boton de ajustes en la app ya configurada: reutilizar la pantalla de setup
   (usuario/password Soulseek, carpeta de musica, carpeta compartida, credentials.json),
   reescribir `config.json` y `slskd.yml`, reiniciar slskd si estaba abierto.
@@ -31,6 +36,10 @@
 - [x] `YML_VERSION` + `ensure_slskd_yml()`: la app regenera su `slskd.yml` sola cuando cambia la plantilla.
 
 ## Scoring
+- [x] Apostrofes al normalizar: `They're` debe quedar `theyre`, no `they re`. En `normalize_for_match`
+  (y en `loose_title`, que construye la query de busqueda) quitar `'` y `’` antes de sustituir el
+  resto de simbolos por espacio. Ojo: en la query de Soulseek `they re` busca dos terminos sueltos,
+  `theyre` uno; comprobar cual encuentra mas antes de cambiar la query.
 - [x] Timeout de descarga por inactividad, no por tiempo total: en `slskd_download` reiniciar el
   contador cada vez que cambia `bytesTransferred`; solo rendirse tras DOWNLOAD_WAIT_SEC sin
   progreso (en wifi lento se cortaban descargas vivas con "Transfer ended: InProgress").
@@ -43,6 +52,10 @@
 - [x] Aceptar 192 kbps como ultimo recurso (penalizado, no descartado).
 - [ ] Modo sin puerto (wifi ajeno, sin 50300 abierto): priorizar usuarios con puerto abierto
   (campo de la respuesta de slskd) para no gastar la cola de 45 s en los que nunca conectan.
+- [ ] Espera larga para candidatos buenos en cola antes del ultimo recurso: NuagistTurtleize tiene
+  FLAC de casi todo pero siempre deja en cola (45 s y fuera) y se acaba bajando un 128. Antes de
+  pasar a `Last resort`, reintentar los candidatos de calidad que quedaron en cola con QUEUE_WAIT
+  largo (3 min).
 - [ ] Memoria de usuarios: recordar durante la ejecucion (y entre ejecuciones, en un json en
   APP_DIR) de que usuarios se ha descargado bien y cuales han fallado o rechazado. En el
   scoring, bonus a los buenos y penalizacion a los malos, para que un usuario que ya ha
