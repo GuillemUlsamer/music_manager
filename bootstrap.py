@@ -32,6 +32,7 @@ DEFAULT_MUSIC_DIR = Path.home() / 'Music' / 'Music Manager'
 
 WEB_PORT = 5030
 LISTEN_PORT = 50300
+YML_VERSION = 2
 GITHUB_LATEST = 'https://api.github.com/repos/slskd/slskd/releases/latest'
 
 def inbox_dir(music_dir):
@@ -46,6 +47,12 @@ def is_configured():
 def load_config():
     with open(CONFIG_FILE, encoding='utf-8') as f:
         return json.load(f)
+
+def read_soulseek_password():
+    if not SLSKD_YML.exists():
+        return ''
+    m = re.search(r'^\s*password:\s*"?(.*?)"?\s*$', SLSKD_YML.read_text(encoding='utf-8'), re.MULTILINE)
+    return m.group(1) if m else ''
 
 def download_slskd(progress):
     """Baja la ultima release de slskd para Windows x64 y la descomprime en tools/slskd."""
@@ -77,14 +84,16 @@ def download_slskd(progress):
     if not SLSKD_EXE.exists():
         raise RuntimeError("The zip did not contain slskd.exe where expected.")
 
-def write_slskd_yml(username, password, api_key, music_dir, share_dir=None):
+def write_slskd_yml(username, password, api_key, music_dir, share_dir=None, listen_port=LISTEN_PORT):
     shares = f"    - {share_dir}\n" if share_dir else ""
     yml = f"""# Generado por Music Manager. No editar a mano: se regenera desde la app.
 soulseek:
   username: {username}
   password: "{password}"
   description: "music_manager"
-  listen_port: {LISTEN_PORT}
+  listen_port: {listen_port}
+  distributed_network:
+    disabled: true
 
 directories:
   downloads: {inbox_dir(music_dir)}
@@ -126,7 +135,7 @@ searches:
     SLSKD_APP_DIR.mkdir(parents=True, exist_ok=True)
     SLSKD_YML.write_text(yml, encoding='utf-8')
 
-def run_setup(username, password, music_dir, share_dir=None, credentials_src=None, progress=print):
+def run_setup(username, password, music_dir, share_dir=None, credentials_src=None, progress=print, listen_port=LISTEN_PORT):
     """Ejecuta todos los pasos. `progress` recibe mensajes de estado (str)."""
     music_dir = Path(music_dir)
 
@@ -147,7 +156,7 @@ def run_setup(username, password, music_dir, share_dir=None, credentials_src=Non
     progress("Writing slskd configuration...")
     api_key = load_config().get('api_key') if CONFIG_FILE.exists() else None
     api_key = api_key or secrets.token_hex(24)
-    write_slskd_yml(username, password, api_key, music_dir, share_dir)
+    write_slskd_yml(username, password, api_key, music_dir, share_dir, listen_port)
 
     config = {
         'url': f'http://127.0.0.1:{WEB_PORT}/api/v0',
@@ -158,8 +167,25 @@ def run_setup(username, password, music_dir, share_dir=None, credentials_src=Non
         'app_dir': str(SLSKD_APP_DIR),
         'soulseek_username': username,
         'share_dir': share_dir or '',
+        'yml_version': YML_VERSION,
+        'listen_port': listen_port,
     }
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
     progress("Setup complete.")
     return config
+
+def ensure_slskd_yml():
+    """Regenera slskd.yml si la plantilla ha cambiado desde que se escribio."""
+    config = load_config()
+    if config.get('yml_version', 0) >= YML_VERSION or not SLSKD_YML.exists():
+        return
+    password = read_soulseek_password()
+    if not password:
+        return
+    write_slskd_yml(config['soulseek_username'], password, config['api_key'],
+                    config['music_dir'], config.get('share_dir') or None, config.get('listen_port', LISTEN_PORT))
+    config['yml_version'] = YML_VERSION
+    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2)
+    print("slskd configuration updated.")

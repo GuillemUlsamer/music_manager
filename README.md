@@ -2,44 +2,59 @@
 
 Este proyecto sincroniza una carpeta de música local con una hoja de cálculo de Google Sheets.
 
-Si una canción de tu sheet de google esta marcada, la busca y la descarga de YouTube, la convierte a MP3, añade metadatos (ID3 tags) y actualiza el estado en la hoja de cálculo. También gestiona el borrado de archivos si se desmarcan en la lista.
+Si una canción de tu sheet de google esta marcada, la busca y la descarga de Soulseek (a través de slskd), la convierte a MP3, añade metadatos (ID3 tags) y actualiza el estado en la hoja de cálculo. También gestiona el borrado de archivos si se desmarcan en la lista.
 
 Incluye un script de Google Apps Script (`playlistHelper.gs`) para importar tracklists directamente desde Discogs a la hoja de cálculo. 
 
 ## Features
 - Sync music library with Google Sheets
-- Download tracks from YouTube automatically
-- Convert to MP3 and add metadata
+- Download tracks from Soulseek automatically (strives for best bitrate)
+- Convert to MP3
+- Add metadata: artist, title, album (compilation + volume), year, track number and cover art
 - Import playlists from Discogs
 - Import Discogs lists (multi-release) and create volumes automatically
 - Keep a Releases catalog sheet with album, year and cover
-- Run from a desktop GUI (`gui.py`) with live colored logs and stop button
+- Run from a desktop GUI (`gui.py`) with playlist cards from your Drive, live colored logs and stop button
 
 ## Tech Stack
 - Python
 - Google Sheets API
-- yt-dlp
+- slskd (Soulseek client, REST API)
 - FFmpeg
 - Google Apps Script
 
 ## Requisitos Previos
 
-1.  **Python 3.9+** instalado.
-2.  **FFmpeg**: Necesario para que `yt-dlp` pueda extraer y convertir el audio a MP3. Debe estar en tu variable de entorno PATH.
-3.  **Cuenta de Servicio de Google**:
+1.  **Cuenta de Soulseek**: usuario y contraseña. Si el usuario no existe, se crea con esa contraseña la 
+    primera vez que conecta.
+2.  **Cuenta de Servicio de Google**:
     *   Habilita las APIs de Google Sheets y Google Drive en Google Cloud Console.
     *   Crea una cuenta de servicio y descarga la clave JSON.
-    *   Guarda el archivo como `credentials.json` en la carpeta raíz del proyecto.
-    *   **Importante**: Comparte tu hoja de cálculo con el email de la cuenta de servicio (aparece en el JSON como `client_email`).
+    *   Guarda el archivo como `credentials.json` donde quieras, la app al arrancar te pide que indiques su ubicacion.
+    *   **Importante**: Comparte tu hoja de cálculo con el email de la cuenta de servicio (aparece en el JSON como `client_email`). Modo editor.
 
 ## Instalación
 
-1.  Clona el repositorio.
-2.  Instala las dependencias de Python:
+1.  Descarga `MusicManagerSetup-x.x.x.exe` de la página de [Releases](https://github.com/GuillemUlsamer/music_manager/releases) y ejecútalo. Crea un acceso directo en el escritorio.
+2.  Abre Music Manager. La primera vez aparece la pantalla de configuración:
+    *   Usuario y contraseña de Soulseek.
+    *   Carpeta de música: donde se guardarán las playlists (una subcarpeta por cada una).
+    *   Carpeta a compartir (opcional): lo que ofreces a la red de Soulseek. Compartir algo hace que más usuarios te sirvan.
+    *   `credentials.json` de Google.
+    *   Puerto de Soulseek (deja 50300 si no sabes qué es).
+3.  Pulsa **Set up**. Descarga slskd (el cliente de Soulseek) y lo configura; tarda un minuto. Todo queda en `%LOCALAPPDATA%\MusicManager`, fuera de la carpeta de música.
 
-```bash
-pip install -r requirements.txt
-```
+# aparte
+    Si quieres ejecutarlo o modificarlo desde el código:
+    git clone https://github.com/GuillemUlsamer/music_manager.git
+    cd music_manager
+    pip install -r requirements.txt
+    python gui.py
+
+    Para generar el instalador (necesitas [Inno Setup 6](https://jrsoftware.org/isdl.php) instalado):
+    python -m pip install pyinstaller
+    python -m PyInstaller --noconfirm MusicManager.spec
+    & "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe" installer.iss
 
 ## Configuración de la Hoja de Cálculo
 
@@ -109,27 +124,15 @@ Además del import por Release ID, el menú también incluye:
 
 ## Uso
 
-Ejecuta el script desde la terminal indicando el nombre de la hoja de cálculo (que debe coincidir con el nombre de la hoja en Google Drive). El script creará una carpeta con ese mismo nombre en el directorio padre `../MUSIC/`.
+Abre Music Manager desde el acceso directo. Aparecen tus hojas de Google Drive como tarjetas con su portada. Pulsa una y empieza a descargar las canciones marcadas en la carpeta de música que configuraste, en una subcarpeta `NOMBRE PLAYLIST`.
 
-```bash
-python music_manager.py "Nombre de tu Playlist"
-```
+El log muestra cada búsqueda, el candidato elegido y el estado de la descarga. **Stop** para y cierra slskd. **Copy output** copia el log al portapapeles. **Settings** vuelve a la pantalla de configuración.
 
-### Argumentos
+Si desmarcas una canción ya descargada, la próxima ejecución la borra de la carpeta.
 
-*   `name`: El nombre exacto de la Google Sheet. También será el nombre de la carpeta donde se guarden los MP3.
+### Estado en la hoja
 
-### Ejemplo
-
-Si tu hoja se llama "Always hardcore":
-
-```bash
-python music_manager.py "Always hardcore"
-```
-
-Esto buscará o creará la carpeta `../ALWAYS HARDCORE PLAYLIST` y descargará las canciones marcadas.
-
-depende de desde donde ejecutes el programa, yo tengo una carpeta en mi ordenador con todas mis playlists por ejemplo /Desktop/MUSIC/ 
+En la columna Estado verás `Downloaded`, `Downloaded (verify)` (vino de una búsqueda sin artista, revísala) o `Failed, Do it manually`.
 
 ### Uso con GUI
 
@@ -143,55 +146,34 @@ En la GUI, escribe el nombre del spreadsheet, pulsa **Ejecutar** y revisa el log
 
 ## Problemas Comunes
 
-### Error: `ffprobe and ffmpeg not found`
+### Se queda en `Starting slskd...` y se rinde
 
-Falta FFmpeg. Instálalo:
+slskd no ha podido conectar. Lánzalo a mano para ver el motivo:
 
-```powershell
-winget install --id Gyan.FFmpeg -e
-```
+& "$env:LOCALAPPDATA\MusicManager\tools\slskd\slskd.exe" --app-dir "$env:LOCALAPPDATA\MusicManager\tools\slskd_data"
 
-Cierra la terminal, abre una nueva y comprueba:
 
-```powershell
-ffmpeg -version
-```
+Si dice `Failed to start listening on 0.0.0.0:50300`, Windows tiene el puerto reservado (`netsh interface ipv4 show excludedportrange protocol=tcp`). Cambia el puerto en **Settings** a uno fuera de esos rangos, por ejemplo 2234.
 
-### Error: `Sign in to confirm your age`
-
-El vídeo tiene restricción de edad. El script lo descarta y prueba con el siguiente resultado, así que normalmente no hay que hacer nada.
-
-Si quieres esa versión en concreto, descárgala a mano y deja el MP3 en la carpeta de la playlist:
-
-```powershell
-yt-dlp --cookies-from-browser chrome -x --audio-format mp3 "URL_DEL_VIDEO"
-```
-
-### Error 403 / YouTube detecta un bot
-
-No añadas cookies al script. Usarlas en todas las descargas es justo lo que provoca el bloqueo.
-
-1.  Actualiza yt-dlp: `pip install -U yt-dlp`
-2.  Espera un rato: el bloqueo es temporal.
-
-si no funciona vuelve a instalar el programa
-
-### Error: `Spreadsheet not found`
-
-1.  El nombre que pasas debe ser idéntico al de la hoja en Drive.
-2.  La hoja debe estar compartida con el `client_email` del `credentials.json`, y como **Editor** (el script escribe en la columna Estado).
+Si dice `username and/or password invalid`, revisa las credenciales de Soulseek en **Settings**.
 
 ### Montar el proyecto en otro ordenador
 
 No hay que repetir nada de Google Cloud ni volver a compartir la hoja.
-
-1.  Copia el `credentials.json` del otro equipo. Si no lo tienes a mano, crea una clave nueva en la **misma** cuenta de servicio (Credenciales > la cuenta > Claves > Agregar clave > JSON). No invalida la del otro portátil.
-2.  Instala FFmpeg (ver arriba).
-3.  `pip install -r requirements.txt`
+1.  Instala desde el mismo instalador.
+2.  Copia el `credentials.json` del otro equipo. Si no lo tienes a mano, crea una clave nueva en la **misma** cuenta de servicio (Credenciales > la cuenta > Claves > Agregar clave > JSON). No invalida la del otro portátil.
+3.  Rellena el setup. 
 
 ## Estructura del Proyecto
 
-*   `music_manager.py`: Script principal de Python.
-*   `gui.py`: Interfaz gráfica para ejecutar y monitorizar el proceso.
+*   `gui.py`: Interfaz gráfica (setup, selector de playlists, ejecución).
+*   `manager.py`: Orquesta una ejecución: arranca slskd, lee la hoja, descarga, apaga slskd.
+*   `bootstrap.py`: Primer arranque: descarga slskd y genera su configuración.
+*   `sheets.py`: Lectura y escritura de la hoja de Google.
+*   `downloader.py`: Estrategia de búsquedas (exacta, álbum, suelta, título, artista, último recurso).
+*   `matching.py`: Puntuación y filtrado de candidatos.
+*   `slskd_client.py`: Llamadas a la API de slskd y conversión FLAC a MP3.
+*   `tagging.py`: Limpieza de nombres y etiquetas ID3.
 *   `playlistHelper.gs`: Script para Google Sheets (Google Apps Script).
 *   `requirements.txt`: Lista de librerías de Python necesarias.
+*   `MusicManager.spec` e `installer.iss`: Generación del exe y del instalador.

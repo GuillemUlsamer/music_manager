@@ -1,5 +1,5 @@
 # Instalacion: pip install -r requirements.txt && python gui.py
-# El primer arranque descarga slskd y genera toda su configuracion en tools/.
+# El primer arranque descarga slskd y genera toda su configuracion en %LOCALAPPDATA%\MusicManager.
 # Lo unico que hay que tener a mano es credentials.json (cuenta de servicio de Google).
 gspread
 google-auth
@@ -7,4 +7,3 @@ requests
 mutagen
 pillow
 imageio-ffmpeg
-yt-dlp

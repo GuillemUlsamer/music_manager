@@ -10,18 +10,19 @@ import requests
 from config import cfg, slskd_url, slskd_headers, slskd_inbox
 from stop import check_stop
 
+SESSION = requests.Session()
 SEARCH_WAIT_SEC = 5
 QUEUE_WAIT_SEC = 45
 DOWNLOAD_WAIT_SEC = 240
 
 # api del slskd
 def slskd_get(path, **params):
-    r = requests.get(f"{slskd_url()}{path}", headers=slskd_headers(), params=params, timeout=10)
+    r = SESSION.get(f"{slskd_url()}{path}", headers=slskd_headers(), params=params, timeout=30)
     r.raise_for_status()
     return r.json()
 
 def slskd_post(path, payload):
-    r = requests.post(f"{slskd_url()}{path}", headers=slskd_headers(), json=payload, timeout=10)
+    r = SESSION.post(f"{slskd_url()}{path}", headers=slskd_headers(), json=payload, timeout=30)
     r.raise_for_status()
     return r.json() if r.content else None
 
@@ -89,8 +90,8 @@ def find_transfer(username, filename):
 
 def slskd_remove_transfer(username, transfer_id):
     base = f"{slskd_url()}/transfers/downloads/{quote(username, safe='')}/{transfer_id}"
-    requests.delete(base, headers=slskd_headers(), timeout=10)                       # cancela
-    requests.delete(base, headers=slskd_headers(), params={'remove': 'true'}, timeout=10)  # borra
+    SESSION.delete(base, headers=slskd_headers(), timeout=10)                       # cancela
+    SESSION.delete(base, headers=slskd_headers(), params={'remove': 'true'}, timeout=10)  # borra
 
 def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
     search = slskd_post("/searches", {"searchText": query})
@@ -106,7 +107,7 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
             break
 
     if not state["state"].startswith("Completed"):
-        requests.put(f"{slskd_url()}/searches/{search_id}", headers=slskd_headers(), timeout=10)
+        SESSION.put(f"{slskd_url()}/searches/{search_id}", headers=slskd_headers(), timeout=10)
         for _ in range(10):
             time.sleep(0.5)
             state = slskd_get(f"/searches/{search_id}")
@@ -114,7 +115,7 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
                 break
 
     responses = slskd_get(f"/searches/{search_id}/responses")
-    requests.delete(f"{slskd_url()}/searches/{search_id}", headers=slskd_headers(), timeout=10)
+    SESSION.delete(f"{slskd_url()}/searches/{search_id}", headers=slskd_headers(), timeout=10)
     return responses
 
 def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
@@ -128,9 +129,10 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
     transfer = None
     last_state = None
     queued_since = None
-    deadline = time.time() + wait_sec
+    last_bytes = -1
+    last_progress = time.time()
     try:
-        while time.time() < deadline:
+        while time.time() - last_progress < wait_sec:
             check_stop()
             time.sleep(2)
             transfer = find_transfer(username, file_info['filename'])
@@ -150,6 +152,10 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
                     return None
             else:
                 queued_since = None
+            done = transfer.get('bytesTransferred', 0)
+            if done != last_bytes:
+                last_bytes = done
+                last_progress = time.time()
     except SystemExit:
         if transfer:
             slskd_remove_transfer(username, transfer['id'])
@@ -164,7 +170,11 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
         slskd_remove_transfer(username, transfer['id'])
         return None
 
-    matches = glob.glob(os.path.join(slskd_inbox(), '**', glob.escape(remote_name)), recursive=True)
+    for _ in range(10):   # slskd marca Succeeded un instante antes de mover el fichero al inbox
+        matches = glob.glob(os.path.join(slskd_inbox(), '**', glob.escape(remote_name)), recursive=True)
+        if matches:
+            break
+        time.sleep(1)
     if not matches:
         print(f"   > Downloaded but not found in {slskd_inbox()}")
         slskd_remove_transfer(username, transfer['id'])

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from config import cfg
 from stop import STOP_EVENT
+import bootstrap
 from slskd_client import ensure_slskd, stop_slskd
 from sheets import setup_gspread, process_sheet
 
@@ -16,6 +17,7 @@ def run_manager(spreadsheet_name):
     STOP_EVENT.clear()
     slskd_proc = None
     try:
+        bootstrap.ensure_slskd_yml()
         slskd_proc = ensure_slskd()
         client = setup_gspread()
         if not client:
