@@ -134,22 +134,6 @@ Si desmarcas una canción ya descargada, la próxima ejecución la borra de la c
 
 En la columna Estado verás `Downloaded`, `Downloaded (verify)` (vino de una búsqueda sin artista, revísala) o `Failed, Do it manually`.
 
-### Argumentos
-
-*   `name`: El nombre exacto de la Google Sheet. También será el nombre de la carpeta donde se guarden los MP3.
-
-### Ejemplo
-
-Si tu hoja se llama "Always hardcore":
-
-```bash
-python music_manager.py "Always hardcore"
-```
-
-Esto buscará o creará la carpeta `../ALWAYS HARDCORE PLAYLIST` y descargará las canciones marcadas.
-
-depende de desde donde ejecutes el programa, yo tengo una carpeta en mi ordenador con todas mis playlists por ejemplo /Desktop/MUSIC/ 
-
 ### Uso con GUI
 
 También puedes ejecutar el gestor con interfaz gráfica:
@@ -182,8 +166,14 @@ No hay que repetir nada de Google Cloud ni volver a compartir la hoja.
 
 ## Estructura del Proyecto
 
-*   `music_manager.py`: Script principal de Python.
-*   `gui.py`: Interfaz gráfica para ejecutar y monitorizar el proceso.
+*   `gui.py`: Interfaz gráfica (setup, selector de playlists, ejecución).
+*   `manager.py`: Orquesta una ejecución: arranca slskd, lee la hoja, descarga, apaga slskd.
+*   `bootstrap.py`: Primer arranque: descarga slskd y genera su configuración.
+*   `sheets.py`: Lectura y escritura de la hoja de Google.
+*   `downloader.py`: Estrategia de búsquedas (exacta, álbum, suelta, título, artista, último recurso).
+*   `matching.py`: Puntuación y filtrado de candidatos.
+*   `slskd_client.py`: Llamadas a la API de slskd y conversión FLAC a MP3.
+*   `tagging.py`: Limpieza de nombres y etiquetas ID3.
 *   `playlistHelper.gs`: Script para Google Sheets (Google Apps Script).
 *   `requirements.txt`: Lista de librerías de Python necesarias.
 *   `MusicManager.spec` e `installer.iss`: Generación del exe y del instalador.
