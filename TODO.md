@@ -13,7 +13,7 @@
 - [ ] Reescribir para v2 (Soulseek/slskd, setup automatico, credentials.json). Aun habla de YouTube/yt-dlp.
 
 ## App
-- [ ] Puerto de escucha de Soulseek configurable (campo en Settings, guardado en config.json) o
+- [x] Puerto de escucha de Soulseek configurable (campo en Settings, guardado en config.json) o
   elegir uno libre automaticamente. Ahora LISTEN_PORT=50300 fijo en bootstrap; si Windows lo
   reserva (rangos de Hyper-V/WinNAT, `netsh interface ipv4 show excludedportrange protocol=tcp`)
   slskd no arranca y la app se queda "esperando a slskd". Al regenerar el yml se pierde un cambio
