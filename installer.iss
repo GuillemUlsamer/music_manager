@@ -1,5 +1,7 @@
 #define AppName "Music Manager"
-#define AppVersion "2.0.0"
+#ifndef AppVersion
+  #define AppVersion "2.0.0"
+#endif
 #define AppExe "MusicManager.exe"
 
 [Setup]
