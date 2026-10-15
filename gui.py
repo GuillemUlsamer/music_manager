@@ -110,6 +110,7 @@ class MusicManagerGUI:
                                           browse=lambda: self._pick_dir(self.setup_share, "Folder to share on Soulseek"))
         self.setup_creds = self._form_row(form, 4, "Google credentials.json:",
                                           browse=lambda: self._pick_file(self.setup_creds))
+        self.setup_port = self._form_row(form, 5, "Soulseek port:")
 
         actions = tk.Frame(self.setup)
         actions.pack(anchor="w", pady=(18, 10))
@@ -146,6 +147,10 @@ class MusicManagerGUI:
         music = self.setup_music.get().strip()
         share = self.setup_share.get().strip() or None
         creds = self.setup_creds.get().strip() or None
+        port = self.setup_port.get().strip() or str(bootstrap.LISTEN_PORT)
+        if not port.isdigit():
+            self.setup_status.config(text="The port must be a number.")
+            return
         if not user or not pwd:
             self.setup_status.config(text="Soulseek username and password are required.")
             return
@@ -158,12 +163,12 @@ class MusicManagerGUI:
         self.setup_button.config(state="disabled")
         self.setup_progress.pack(anchor="w", pady=(0, 8), before=self.setup_status)
         self.setup_progress.start(12)
-        threading.Thread(target=self._setup_thread, args=(user, pwd, music, share, creds), daemon=True).start()
+        threading.Thread(target=self._setup_thread, args=(user, pwd, music, share, creds, int(port)), daemon=True).start()
 
-    def _setup_thread(self, user, pwd, music, share, creds):
+    def _setup_thread(self, user, pwd, music, share, creds, port):
         progress = lambda msg: self.root.after(0, self.setup_status.config, {"text": msg})
         try:
-            bootstrap.run_setup(user, pwd, music, share, creds, progress=progress)
+            bootstrap.run_setup(user, pwd, music, share, creds, progress=progress, listen_port=port)
             error = None
         except Exception as e:
             error = e
@@ -181,7 +186,7 @@ class MusicManagerGUI:
     def show_setup(self, editing=False):
         self.picker.pack_forget()
         self.runner.pack_forget()
-        for entry in (self.setup_user, self.setup_pass, self.setup_music, self.setup_share, self.setup_creds):
+        for entry in (self.setup_user, self.setup_pass, self.setup_music, self.setup_share, self.setup_creds, self.setup_port):
             entry.delete(0, tk.END)
         if editing:
             cfg = bootstrap.load_config()
@@ -189,12 +194,14 @@ class MusicManagerGUI:
             self.setup_pass.insert(0, bootstrap.read_soulseek_password())
             self.setup_music.insert(0, cfg.get('music_dir', ''))
             self.setup_share.insert(0, cfg.get('share_dir', ''))
+            self.setup_port.insert(0, str(cfg.get('listen_port', bootstrap.LISTEN_PORT)))
             self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
             self.setup_title.config(text="Settings")
             self.setup_button.config(text="Save")
             self.setup_cancel.pack(side=tk.LEFT, padx=(8, 0))
         else:
             self.setup_music.insert(0, str(bootstrap.DEFAULT_MUSIC_DIR))
+            self.setup_port.insert(0, str(bootstrap.LISTEN_PORT))
             if bootstrap.CREDENTIALS_FILE.exists():
                 self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
             self.setup_title.config(text="Set up Music Manager")
