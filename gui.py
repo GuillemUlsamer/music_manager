@@ -12,12 +12,10 @@ import manager as music_manager
 import sheets
 
 
+# Pinta el log en un widget de texto de Tkinter. Recibe los eventos de log.py
+# y mantiene una linea por cancion: el estado de cada cancion se sobreescribe
+# en su sitio en vez de anadir lineas nuevas.
 class LogView:
-    """
-    Pinta el log en un widget de texto de Tkinter. Recibe los eventos de log.py
-    y mantiene una linea por cancion: el estado de cada
-    cancion se sobreescribe en su sitio en vez de anadir lineas nuevas.
-    """
     def __init__(self, text_widget):
         self.text_widget = text_widget
         self.marks = {}

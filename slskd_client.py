@@ -1,4 +1,6 @@
 import os
+import json
+import threading
 import glob
 import time
 import shutil
@@ -9,13 +11,43 @@ from urllib.parse import quote
 
 import requests
 
+from bootstrap import APP_DIR
 from config import cfg, slskd_url, slskd_headers, slskd_inbox
 from stop import check_stop
 
 SESSION = requests.Session()
+USERS_FILE = APP_DIR / 'users.json'
 SEARCH_WAIT_SEC = 5
 QUEUE_WAIT_SEC = 45
 DOWNLOAD_WAIT_SEC = 240
+
+# Memoria de usuarios de Soulseek: cuantas veces nos han servido bien (ok) o nos han
+# dejado colgados (bad). Se guarda en users.json dentro de APP_DIR y sobrevive entre
+# ejecuciones. El scoring la usa para ordenar: antes los que ya han servido.
+_users = None
+_users_lock = threading.Lock()
+
+def _load_users():
+    global _users
+    if _users is None:
+        try:
+            _users = json.loads(USERS_FILE.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            _users = {}
+    return _users
+
+def record_user(username, ok):
+    with _users_lock:
+        u = _load_users().setdefault(username, {'ok': 0, 'bad': 0})
+        u['ok' if ok else 'bad'] += 1
+        USERS_FILE.write_text(json.dumps(_users, indent=1), encoding='utf-8')
+
+def user_score_adjust(username):
+    # Se suma al score (menor = mejor): +20 por fallo, -15 por exito, tope 3 de cada
+    u = _load_users().get(username)
+    if not u:
+        return 0
+    return min(u['bad'], 3) * 20 - min(u['ok'], 3) * 15
 
 # api del slskd
 def slskd_get(path, **params):
@@ -151,6 +183,7 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
                 if time.time() - queued_since > QUEUE_WAIT_SEC:
                     log.detail(f"Still queued at {username}, trying the next user")
                     slskd_remove_transfer(username, transfer['id'])
+                    record_user(username, ok=False)
                     return None
             else:
                 queued_since = None
@@ -167,11 +200,13 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
 
     if not transfer:
         log.detail("slskd has no record of the transfer")
+        record_user(username, ok=False)
         return None
 
     if 'Succeeded' not in transfer['state']:
         log.detail(f"Transfer ended: {transfer['state']}")
         slskd_remove_transfer(username, transfer['id'])
+        record_user(username, ok=False)
         return None
 
     for _ in range(10):   # slskd marca Succeeded un instante antes de mover el fichero al inbox
@@ -195,6 +230,7 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
         shutil.move(matches[0], final_file)
     cleanup_empty_dirs(os.path.dirname(matches[0]))
     slskd_remove_transfer(username, transfer['id'])
+    record_user(username, ok=True)
     return final_file
 
 def ffmpeg_exe():

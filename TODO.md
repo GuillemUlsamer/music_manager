@@ -9,15 +9,6 @@
   bitrate desconocido, si vino de FLAC convertido, si salio de la busqueda por album/artista en
   vez de la exacta.
 
-## Log
-- [ ] Rework del log: una linea por cancion con tres partes: lo que se busca (artista - titulo),
-  el estado (se sobreescribe: Searching (Exact)... / Queued / Downloading 45% / Converting...) y el
-  resultado final (fichero elegido, duracion, bitrate, o Failed). El detalle actual (busquedas,
-  Rejected, candidatos) pasa a un modo "verbose" o a un fichero de log, no a la pantalla.
-  Encaja con las descargas en paralelo: cada hilo actualiza su propia linea.
-  Implementacion: en Tk, cada cancion es una fila (Label o linea del Text con un tag/mark), y
-  print() deja de ser el canal; `download_track` recibe un callback `status(msg)`.
-
 ## Rendimiento
 - [ ] Descargas en paralelo: en `process_sheet`, repartir las filas entre N hilos
   (`ThreadPoolExecutor`, `WORKERS = 3` configurable); cada hilo hace el ciclo completo de su

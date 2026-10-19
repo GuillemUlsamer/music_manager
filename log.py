@@ -1,15 +1,13 @@
+# Sustituye a print(), la info detallada se queda en un log.
+#   song(id, text)      crea la linea de una cancion y la deja como "actual" en este hilo
+#   status(text, tag)   sobreescribe el estado de la cancion actual
+#   detail(text)        solo al fichero de log (busquedas, rechazos, errores...)
+#   line(text, tag)     linea suelta (arranque, fin)
 import threading
 
-"""
-Sustituye a print(), la info detallada se queda en un log.
-  song(id, text)      crea la linea de una cancion y la deja como "actual" en este hilo
-  status(text, tag)   sobreescribe el estado de la cancion actual
-  detail(text)        solo al fichero de log (busquedas, rechazos, errores...)
-  line(text, tag)     linea suelta (arranque, fin)
-"""
-
-_handler = None                 # lo pone el GUI
-_current = threading.local()    # cancion actual, distinta en cada hilo
+# _handler lo pone el GUI; _current es la cancion actual, distinta en cada hilo
+_handler = None
+_current = threading.local()
 _file = None
 
 def set_handler(handler):
@@ -18,7 +16,8 @@ def set_handler(handler):
 
 def open_file(path):
     global _file
-    _file = open(path, 'w', encoding='utf-8')   # se vacia en cada arranque de la app
+    # se vacia en cada arranque de la app
+    _file = open(path, 'w', encoding='utf-8')
 
 def _emit(kind, text, tag=None):
     song_id = getattr(_current, 'song', None)

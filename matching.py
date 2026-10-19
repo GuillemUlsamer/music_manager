@@ -3,6 +3,7 @@ import re
 from collections import Counter
 
 import log
+from slskd_client import user_score_adjust
 
 MIN_BITRATE = 256
 LOW_BITRATE = 192
@@ -200,6 +201,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             if not resp.get('hasFreeUploadSlot', True):
                 penalty += 30
             penalty += min(resp.get('queueLength', 0), 50)
+            penalty += user_score_adjust(resp['username'])
 
             final_score = duration_score + penalty
             score_limit = current_tolerance + (60 if strong_match else 0) + 50
