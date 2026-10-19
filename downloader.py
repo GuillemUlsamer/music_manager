@@ -67,12 +67,8 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                 print(f"   > Download Error: {e}")
                 continue
             if final_file:
-                notes = []
-                if attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or not c['duration'] or c['odd_duration']:
-                    notes.append('verify')
-                if c['ext'] != '.flac' and c['bitrate'] and c['bitrate'] < MIN_BITRATE:
-                    notes.append(f"{c['bitrate']} kbps")
-                return final_file, ', '.join(notes)
+                note = 'verify' if (attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or not c['duration'] or c['odd_duration']) else ''
+                return final_file, note
 
     print("   > No matching track found in any source.")
     return None, ''
