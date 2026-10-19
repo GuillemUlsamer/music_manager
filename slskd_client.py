@@ -19,6 +19,7 @@ SESSION = requests.Session()
 USERS_FILE = APP_DIR / 'users.json'
 SEARCH_WAIT_SEC = 5
 QUEUE_WAIT_SEC = 45
+LONG_QUEUE_WAIT_SEC = 180
 DOWNLOAD_WAIT_SEC = 240
 
 # Memoria de usuarios de Soulseek: cuantas veces nos han servido bien (ok) o nos han
@@ -152,7 +153,7 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
     SESSION.delete(f"{slskd_url()}/searches/{search_id}", headers=slskd_headers(), timeout=10)
     return responses
 
-def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
+def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC, queue_wait_sec=QUEUE_WAIT_SEC):
     username = candidate['username']
     file_info = candidate['file']
     remote_name = file_info['filename'].replace('\\', '/').split('/')[-1]
@@ -180,10 +181,11 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
                 break
             if 'Queued' in state:
                 queued_since = queued_since or time.time()
-                if time.time() - queued_since > QUEUE_WAIT_SEC:
+                if time.time() - queued_since > queue_wait_sec:
                     log.detail(f"Still queued at {username}, trying the next user")
                     slskd_remove_transfer(username, transfer['id'])
                     record_user(username, ok=False)
+                    candidate['queued'] = True
                     return None
             else:
                 queued_since = None

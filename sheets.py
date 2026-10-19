@@ -104,7 +104,8 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
     # 2. Creo la carpeta de descargas si no existe
     if not os.path.exists(base_download_dir):
         os.makedirs(base_download_dir)
-
+    review = []
+    
     # 3. Por cada pagina que tenga el spreadsheet, miro las filas y veo cuales estan checkeadas para descargar o eliminar
     for worksheet in sheet.worksheets():
         rows = worksheet.get_all_values()
@@ -163,9 +164,12 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                     tag_file(final_path, artist, title, album_name, album_year, track_no, cover_bytes)
                     worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded ({note})" if note else "Downloaded")
                     log.status(f"Done ({note})" if note else "Done", "done")
+                    if note:
+                        review.append(f"{filename}: {note}")
                 else:
                     worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
                     log.status("Failed", "failed")
+                    review.append(f"{filename}: failed")
 
             # Si no esta checkeada pero esta descargada, la borro
             elif not is_checked and "Downloaded" in status and "Deleting" not in status:
@@ -179,3 +183,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 
                 worksheet.update_cell(row_num, COL_STATUS + 1, "")
 
+    if review:
+        log.line(f"\nTo review ({len(review)}):", "failed")
+        for item in review:
+            log.line("  " + item)
