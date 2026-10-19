@@ -2,6 +2,8 @@ import os
 import re
 from collections import Counter
 
+import log
+
 MIN_BITRATE = 256
 LOW_BITRATE = 192
 LAST_RESORT_BITRATE = 128
@@ -234,7 +236,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
     # acepta 128 kps si no hay nada mas, mejor eso que nada
     last_resort = dedupe_sort(last_resort)
     if not viable and not fallback and rejected:
-        print("   > Rejected: " + ", ".join(f"{v} {k}" for k, v in rejected.most_common()))
+        log.detail("Rejected: " + ", ".join(f"{v} {k}" for k, v in rejected.most_common()))
     if fallback:
-        print(f"   > {len(fallback)} low-bitrate fallback(s)")
+        log.detail(f"{len(fallback)} low-bitrate fallback(s)")
     return viable + fallback, last_resort

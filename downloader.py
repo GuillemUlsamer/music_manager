@@ -1,7 +1,8 @@
 import requests
 
+import log
 from tagging import strip_discogs_suffix
-from matching import loose_title, score_candidates, GENERIC_WORDS, MIN_BITRATE
+from matching import loose_title, score_candidates, GENERIC_WORDS
 from slskd_client import slskd_search, slskd_download
 
 MAX_DOWNLOAD_TRIES = 6  
@@ -29,23 +30,24 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
         if attempt['query'] is None:
             if not last_resort:
                 break
-            print(f"\n   > Nothing better found: trying {len(last_resort)} low-bitrate file(s) as a last resort")
+            log.status(f"Last resort: {len(last_resort)} low-bitrate file(s)", "search")
             candidates = last_resort
         else:
-            print(f"\n   > Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
+            log.status(f"Searching [{attempt['source']}]...", "search")
+            log.detail(f"Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
             try:
                 responses = slskd_search(attempt['query'])
             except requests.ConnectionError:
                 raise SystemExit("Lost connection to slskd.")
             except requests.RequestException as e:
-                print(f"   > Search Error: {e}")
+                log.detail(f"Search Error: {e}")
                 continue
             strict = attempt['source'] not in ('Soulseek (Exact)', 'Soulseek (Loose)')
             candidates, desperate = score_candidates(responses, search_artist, title, expected_duration_sec, tolerance,
                                                      strict=strict, album_hint=album_hint,
                                                      skip_remix_check=(attempt['source'] == 'Soulseek (Album)'))
             last_resort += desperate
-            print(f"   > {len(responses)} users, {len(candidates)} viable")
+            log.detail(f"{len(responses)} users, {len(candidates)} viable")
 
         tries = 0
         for c in candidates:
@@ -58,17 +60,17 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                 break
 
             dur = int(c['duration'] or 0)
-            print(f"   > Match: '{c['title']}' ({dur//60}:{dur%60:02d}, {c['bitrate'] or '?'}kbps) from {c['username']}")
+            log.status(f"Downloading '{c['title']}' ({dur//60}:{dur%60:02d}, {c['bitrate'] or '?'}kbps) from {c['username']}", "downloading")
             try:
                 final_file = slskd_download(c, output_path)
             except requests.ConnectionError:
                 raise SystemExit("Lost connection to slskd.")
             except requests.RequestException as e:
-                print(f"   > Download Error: {e}")
+                log.detail(f"Download Error: {e}")
                 continue
             if final_file:
                 note = 'verify' if (attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or not c['duration'] or c['odd_duration']) else ''
                 return final_file, note
 
-    print("   > No matching track found in any source.")
+    log.detail("No matching track found in any source.")
     return None, ''

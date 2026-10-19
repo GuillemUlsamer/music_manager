@@ -3,6 +3,8 @@ import glob
 import time
 import shutil
 import subprocess
+
+import log
 from urllib.parse import quote
 
 import requests
@@ -36,19 +38,19 @@ def ensure_slskd():
     try:
         if slskd_logged_in():
             return None
-        print("slskd is running but not connected to Soulseek yet, waiting...")
+        log.line("slskd is running but not connected to Soulseek yet, waiting...")
     except requests.exceptions.ConnectionError:
         exe, app_dir = cfg()['exe'], cfg()['app_dir']
         if not os.path.exists(exe):
             raise SystemExit(f"slskd not found at {exe}. Run the first-run setup again.")
-        print("Starting slskd...")
+        log.line("Starting slskd...")
         proc = subprocess.Popen([exe, '--app-dir', app_dir], creationflags=subprocess.CREATE_NO_WINDOW)
 
     for _ in range(60):
         time.sleep(1)
         try:
             if slskd_logged_in():
-                print("slskd connected to Soulseek.")
+                log.line("slskd connected to Soulseek.")
                 return proc
         except requests.exceptions.ConnectionError:
             continue
@@ -60,7 +62,7 @@ def ensure_slskd():
 def stop_slskd(proc):
     if proc is None:
         return
-    print("Shutting down slskd...")
+    log.line("Shutting down slskd...")
     proc.terminate()
     try:
         proc.wait(timeout=10)
@@ -140,14 +142,14 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
                 continue
             state = transfer['state']
             if state != last_state:
-                print(f"   > {state}")
+                log.status(f"{state} ({username})", "downloading")
                 last_state = state
             if state.startswith("Completed"):
                 break
             if 'Queued' in state:
                 queued_since = queued_since or time.time()
                 if time.time() - queued_since > QUEUE_WAIT_SEC:
-                    print("   > Still queued, trying the next user")
+                    log.detail(f"Still queued at {username}, trying the next user")
                     slskd_remove_transfer(username, transfer['id'])
                     return None
             else:
@@ -156,17 +158,19 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
             if done != last_bytes:
                 last_bytes = done
                 last_progress = time.time()
+                if state == 'InProgress' and file_info['size']:
+                    log.status(f"Downloading {done * 100 // file_info['size']}% from {username}", "downloading")
     except SystemExit:
         if transfer:
             slskd_remove_transfer(username, transfer['id'])
         raise
 
     if not transfer:
-        print("   > slskd has no record of the transfer")
+        log.detail("slskd has no record of the transfer")
         return None
 
     if 'Succeeded' not in transfer['state']:
-        print(f"   > Transfer ended: {transfer['state']}")
+        log.detail(f"Transfer ended: {transfer['state']}")
         slskd_remove_transfer(username, transfer['id'])
         return None
 
@@ -176,7 +180,7 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC):
             break
         time.sleep(1)
     if not matches:
-        print(f"   > Downloaded but not found in {slskd_inbox()}")
+        log.detail(f"Downloaded but not found in {slskd_inbox()}")
         slskd_remove_transfer(username, transfer['id'])
         return None
 
@@ -201,13 +205,13 @@ def ffmpeg_exe():
         return 'ffmpeg'
 
 def convert_to_mp3(src, dst):
-    print("   > Converting FLAC to MP3 320...")
+    log.status("Converting FLAC to MP3 320...", "downloading")
     cmd = [ffmpeg_exe(), '-y', '-loglevel', 'error', '-i', src,
            '-codec:a', 'libmp3lame', '-b:a', '320k', '-map_metadata', '0', dst]
     try:
         subprocess.run(cmd, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return True
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"   > FFmpeg Error: {e}")
+        log.detail(f"FFmpeg Error: {e}")
         return False
 

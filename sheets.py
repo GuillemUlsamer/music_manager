@@ -11,6 +11,7 @@ from google.oauth2.service_account import Credentials
 import requests
 
 import bootstrap
+import log
 from stop import check_stop
 from tagging import sanitize_filename, clean_artist, clean_title, tag_file
 from downloader import download_track
@@ -97,7 +98,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
     try:
         sheet = client.open(spreadsheet_name)
     except gspread.exceptions.SpreadsheetNotFound:
-        print(f"Spreadsheet '{spreadsheet_name}' not found.")
+        log.line(f"Spreadsheet '{spreadsheet_name}' not found.", "error")
         return
 
     # 2. Creo la carpeta de descargas si no existe
@@ -117,7 +118,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
             try:
                 cover_bytes = fetch_image(cover_url)
             except Exception as e:
-                print(f"   > Cover not available: {e}")
+                log.line(f"Cover not available: {e}", "error")
         album_hint = f"{spreadsheet_name} {vol_match.group(0)}" if vol_match else None
 
         # 3.1 Si no hay filas o solo hay una (header), salto esta hoja
@@ -147,7 +148,7 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
 
             # Si esta checkeada y no esta descargada, la descargo
             if is_checked and "Downloaded" not in status:
-                print(f"[{worksheet.title}] Downloading: {filename}")
+                log.song((worksheet.title, row_num), f"[{worksheet.title}] {filename}")
                 worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
                 
                 exp_seconds = parse_duration(duration_str)
@@ -160,21 +161,21 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 # si ha funcionado, pongo los tags
                 if final_path:
                     tag_file(final_path, artist, title, album_name, album_year, track_no, cover_bytes)
-                    worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded")
-                    print(f"   > Done ({note})." if note else "   > Done.")
+                    worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded ({note})" if note else "Downloaded")
+                    log.status(f"Done ({note})" if note else "Done", "done")
                 else:
                     worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
-                    print("   > Failed.")
+                    log.status("Failed", "failed")
 
             # Si no esta checkeada pero esta descargada, la borro
             elif not is_checked and "Downloaded" in status and "Deleting" not in status:
-                print(f"[{worksheet.title}] Deleting: {filename}")
+                log.song((worksheet.title, row_num), f"[{worksheet.title}] {filename}")
                 if os.path.exists(mp3_path):
                     try:
                         os.remove(mp3_path)
-                        print("   > Deleted.")
+                        log.status("Deleted", "done")
                     except Exception as e:
-                        print(f"   > Del Error: {e}")
+                        log.status(f"Del Error: {e}", "error")
                 
                 worksheet.update_cell(row_num, COL_STATUS + 1, "")
 
