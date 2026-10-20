@@ -19,6 +19,7 @@ class LogView:
     def __init__(self, text_widget):
         self.text_widget = text_widget
         self.marks = {}
+        self.count = 0
         self._configure_tags()
 
     def _configure_tags(self):
@@ -41,7 +42,8 @@ class LogView:
             self.text_widget.insert(mark, text, tag)
         else:
             if kind == "song":
-                mark = f"song{len(self.marks)}"
+                self.count += 1
+                mark = f"song{self.count}"
                 self.text_widget.insert(tk.END, text + "  ·  ")
                 self.text_widget.mark_set(mark, "end-1c")
                 self.text_widget.mark_gravity(mark, tk.LEFT)
