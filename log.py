@@ -9,6 +9,7 @@ import threading
 _handler = None
 _current = threading.local()
 _file = None
+_lock = threading.Lock()
 
 def set_handler(handler):
     global _handler
@@ -22,8 +23,9 @@ def open_file(path):
 def _emit(kind, text, tag=None):
     song_id = getattr(_current, 'song', None)
     if _file:
-        _file.write(f"{song_id or '-'} | {text}\n")
-        _file.flush()
+        with _lock:
+            _file.write(f"{song_id or '-'} | {text}\n")
+            _file.flush()
     if kind == 'detail':
         return
     if _handler:
@@ -43,3 +45,4 @@ def detail(text):
 
 def line(text, tag=None):
     _emit('line', text, tag)
+

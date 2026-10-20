@@ -18,6 +18,8 @@ from downloader import download_track
 
 CREDENTIALS_FILE = bootstrap.CREDENTIALS_FILE
 
+THREADS = 3
+
 # Columns (0-indexed)
 COL_ARTIST = 1
 COL_TITLE = 2
@@ -105,6 +107,8 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
     if not os.path.exists(base_download_dir):
         os.makedirs(base_download_dir)
     review = []
+    pool = ThreadPoolExecutor(max_workers=THREADS)
+    jobs = []
     
     # 3. Por cada pagina que tenga el spreadsheet, miro las filas y veo cuales estan checkeadas para descargar o eliminar
     for worksheet in sheet.worksheets():
@@ -149,28 +153,11 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
 
             # Si esta checkeada y no esta descargada, la descargo
             if is_checked and "Downloaded" not in status:
-                log.song((worksheet.title, row_num), f"[{worksheet.title}] {filename}")
-                worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
-                
                 exp_seconds = parse_duration(duration_str)
-                try:
-                    final_path, note = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
-                except SystemExit:
-                    worksheet.update_cell(row_num, COL_STATUS + 1, "")
-                    raise
+                # Pongo el trabajo (descargar una cancion) en la cola del pool de threads
+                jobs.append(pool.submit(download_row, worksheet, row_num, artist, title, file_path, exp_seconds, album_hint,
+                                        album_name, album_year, track_no, cover_bytes, review))
                 
-                # si ha funcionado, pongo los tags
-                if final_path:
-                    tag_file(final_path, artist, title, album_name, album_year, track_no, cover_bytes)
-                    worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded ({note})" if note else "Downloaded")
-                    log.status(f"Done ({note})" if note else "Done", "done")
-                    if note:
-                        review.append(f"{filename}: {note}")
-                else:
-                    worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
-                    log.status("Failed", "failed")
-                    review.append(f"{filename}: failed")
-
             # Si no esta checkeada pero esta descargada, la borro
             elif not is_checked and "Downloaded" in status and "Deleting" not in status:
                 log.song((worksheet.title, row_num), f"[{worksheet.title}] {filename}")
@@ -183,7 +170,41 @@ def process_sheet(client, spreadsheet_name, base_download_dir):
                 
                 worksheet.update_cell(row_num, COL_STATUS + 1, "")
 
+    # Espero a que terminen todos los trabajos
+    try:
+        for job in jobs:
+            job.result()
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+
     if review:
         log.line(f"\nTo review ({len(review)}):", "failed")
         for item in review:
             log.line("  " + item)
+
+
+def download_row(worksheet, row_num, artist, title, file_path, exp_seconds, album_hint,
+                 album_name, album_year, track_no, cover_bytes, review):
+    check_stop()
+    filename = f"{artist} - {title}"
+    log.song((worksheet.title, row_num), f"[{worksheet.title}] {filename}")
+    worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
+
+    exp_seconds = parse_duration(exp_seconds)
+    try:
+        final_path, note = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
+    except SystemExit:
+        worksheet.update_cell(row_num, COL_STATUS + 1, "")
+        raise
+
+    # si ha funcionado, pongo los tags
+    if final_path:
+        tag_file(final_path, artist, title, album_name, album_year, track_no, cover_bytes)
+        worksheet.update_cell(row_num, COL_STATUS + 1, f"Downloaded ({note})" if note else "Downloaded")
+        log.status(f"Done ({note})" if note else "Done", "done")
+        if note:
+            review.append(f"{filename}: {note}")
+    else:
+        worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
+        log.status("Failed", "failed")
+        review.append(f"{filename}: failed")
