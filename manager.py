@@ -2,6 +2,7 @@ import argparse
 from pathlib import Path
 
 from config import cfg
+import log
 from stop import STOP_EVENT
 import bootstrap
 from slskd_client import ensure_slskd, stop_slskd
@@ -10,9 +11,9 @@ from sheets import setup_gspread, process_sheet
 def run_manager(spreadsheet_name):
     download_dir = str(Path(cfg()['music_dir']) / (spreadsheet_name.upper() + " PLAYLIST"))
 
-    print("\n\nRunning the playlist builder")
-    print(f"Spreadsheet: {spreadsheet_name}")
-    print(f"Saving to: {download_dir}")
+    log.line("\nRunning the playlist builder")
+    log.line(f"Spreadsheet: {spreadsheet_name}")
+    log.line(f"Saving to: {download_dir}")
 
     STOP_EVENT.clear()
     slskd_proc = None
@@ -22,18 +23,18 @@ def run_manager(spreadsheet_name):
         client = setup_gspread()
         if not client:
             return
-        print("\nChecking what you want...")
+        log.line("Checking what you want...")
         process_sheet(client, spreadsheet_name, download_dir)
-        print("\nFinished :)")
+        log.line("Finished :)", "done")
     except SystemExit as e:
-        print(f"\n{e}")
+        log.line(str(e), "error")
     except Exception as e:
-        print(f"Global Error: {e}")
+        log.line(f"Global Error: {e}", "error")
     finally:
         stop_slskd(slskd_proc)
 
 def stop_manager():
-    print("Stopping...")
+    log.line("Stopping...")
     STOP_EVENT.set()
 
 def main():

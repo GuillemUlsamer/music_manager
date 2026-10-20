@@ -1,8 +1,9 @@
 import requests
 
+import log
 from tagging import strip_discogs_suffix
-from matching import loose_title, score_candidates, GENERIC_WORDS, MIN_BITRATE
-from slskd_client import slskd_search, slskd_download
+from matching import loose_title, score_candidates, GENERIC_WORDS
+from slskd_client import slskd_search, slskd_download, QUEUE_WAIT_SEC, LONG_QUEUE_WAIT_SEC
 
 MAX_DOWNLOAD_TRIES = 6  
 
@@ -23,29 +24,42 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
 
     tried = set()   # (usuario, fichero) ya intentados, para no repetir entre busquedas
     last_resort = []   # ficheros a 128-191 kbps, solo si todo lo demas falla
+    # candidatos buenos que se quedaron en cola; se reintentan con espera larga antes del ultimo recurso
+    queued = []
+    attempts.append({'source': 'Queued retry', 'query': None})
     attempts.append({'source': 'Last resort', 'query': None})
 
     for attempt in attempts:
-        if attempt['query'] is None:
+        queue_wait = QUEUE_WAIT_SEC
+        if attempt['source'] == 'Queued retry':
+            if not queued:
+                continue
+            log.status(f"Waiting longer for {len(queued)} queued candidate(s)", "search")
+            candidates = queued
+            queue_wait = LONG_QUEUE_WAIT_SEC
+            for c in candidates:
+                tried.discard((c['username'], c['file']['filename']))
+        elif attempt['query'] is None:
             if not last_resort:
                 break
-            print(f"\n   > Nothing better found: trying {len(last_resort)} low-bitrate file(s) as a last resort")
+            log.status(f"Last resort: {len(last_resort)} low-bitrate file(s)", "search")
             candidates = last_resort
         else:
-            print(f"\n   > Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
+            log.status(f"Searching [{attempt['source']}]...", "search")
+            log.detail(f"Search [{attempt['source']}]: {attempt['query']} (Target: {duration_fmt} ±{tolerance}s)")
             try:
                 responses = slskd_search(attempt['query'])
             except requests.ConnectionError:
                 raise SystemExit("Lost connection to slskd.")
             except requests.RequestException as e:
-                print(f"   > Search Error: {e}")
+                log.detail(f"Search Error: {e}")
                 continue
             strict = attempt['source'] not in ('Soulseek (Exact)', 'Soulseek (Loose)')
             candidates, desperate = score_candidates(responses, search_artist, title, expected_duration_sec, tolerance,
                                                      strict=strict, album_hint=album_hint,
                                                      skip_remix_check=(attempt['source'] == 'Soulseek (Album)'))
             last_resort += desperate
-            print(f"   > {len(responses)} users, {len(candidates)} viable")
+            log.detail(f"{len(responses)} users, {len(candidates)} viable")
 
         tries = 0
         for c in candidates:
@@ -58,21 +72,19 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                 break
 
             dur = int(c['duration'] or 0)
-            print(f"   > Match: '{c['title']}' ({dur//60}:{dur%60:02d}, {c['bitrate'] or '?'}kbps) from {c['username']}")
+            log.status(f"Downloading '{c['title']}' ({dur//60}:{dur%60:02d}, {c['bitrate'] or '?'}kbps) from {c['username']}", "downloading")
             try:
-                final_file = slskd_download(c, output_path)
+                final_file = slskd_download(c, output_path, queue_wait_sec=queue_wait)
             except requests.ConnectionError:
                 raise SystemExit("Lost connection to slskd.")
             except requests.RequestException as e:
-                print(f"   > Download Error: {e}")
+                log.detail(f"Download Error: {e}")
                 continue
+            if not final_file and c.pop('queued', False) and queue_wait == QUEUE_WAIT_SEC:
+                queued.append(c)
             if final_file:
-                notes = []
-                if attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or not c['duration']:
-                    notes.append('verify')
-                if c['ext'] != '.flac' and c['bitrate'] and c['bitrate'] < MIN_BITRATE:
-                    notes.append(f"{c['bitrate']} kbps")
-                return final_file, ', '.join(notes)
+                note = 'verify' if (attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or not c['duration'] or c['odd_duration']) else ''
+                return final_file, note
 
-    print("   > No matching track found in any source.")
+    log.detail("No matching track found in any source.")
     return None, ''

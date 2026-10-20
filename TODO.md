@@ -1,69 +1,12 @@
 # TODO
 
-## Limpieza
-- [ ] Borrar `music_manager_v2.py`, `music_manager.py` (`diag_search.py` ya borrado).
-- [ ] Quitar `yt-dlp` de `requirements.txt`.
-- [ ] Commit y push.
+## Rendimiento
+- [ ] Descargas en paralelo: en `process_sheet`, repartir las filas entre N hilos
+  (`ThreadPoolExecutor`, `WORKERS = 3` configurable); cada hilo hace el ciclo completo de su
+  cancion. `download_track` no comparte estado. Log: acumular por cancion y volcar al acabar (o
+  prefijo por cancion). Cuidado con slskd (3 busquedas simultaneas max) y con los usuarios con
+  pocos slots (cola). Hacer despues de los dos puntos de scoring pendientes.
 
-## Release automatica
-- [ ] `.github/workflows/release.yml`: con un tag `v2.x.x`, construir con PyInstaller + Inno Setup en runner Windows y subir `MusicManagerSetup-<ver>.exe` a GitHub Releases.
-- [ ] El instalador nunca se commitea; va a Releases.
-
-## README
-- [ ] Reescribir para v2 (Soulseek/slskd, setup automatico, credentials.json). Aun habla de YouTube/yt-dlp.
-
-## App
-- [ ] En la hoja, no escribir el bitrate: `Downloaded (128 kbps)` -> `Downloaded`. Mantener
-  `Downloaded (verify)`. El bitrate solo en el log. (`downloader.py`: no anadir la nota de kbps;
-  o `sheets.py`: filtrarla antes de escribir.)
-- [x] Puerto de escucha de Soulseek configurable (campo en Settings, guardado en config.json) o
-  elegir uno libre automaticamente. Ahora LISTEN_PORT=50300 fijo en bootstrap; si Windows lo
-  reserva (rangos de Hyper-V/WinNAT, `netsh interface ipv4 show excludedportrange protocol=tcp`)
-  slskd no arranca y la app se queda "esperando a slskd". Al regenerar el yml se pierde un cambio
-  manual.
-- [x] Boton de ajustes en la app ya configurada: reutilizar la pantalla de setup
-  (usuario/password Soulseek, carpeta de musica, carpeta compartida, credentials.json),
-  reescribir `config.json` y `slskd.yml`, reiniciar slskd si estaba abierto.
-- [x] Boton "Copy output" al terminar: copia el log entero al portapapeles para pegarlo en una IA.
-  `self.root.clipboard_append(self.log_box.get("1.0", tk.END))`
-- [ ] (parcial: ya se marca `Downloaded (verify)` en la hoja) Fase 2: resumen automatico al acabar con las canciones a revisar. No necesita IA: guardar por
-  cancion durante la ejecucion si acabo en Failed, si el candidato tenia puntuacion floja o
-  bitrate desconocido, si vino de FLAC convertido, si salio de la busqueda por album/artista en
-  vez de la exacta.
-
-## Robustez de red
-- [x] `requests.Session()` en `slskd_client.py` (keep-alive) para no agotar sockets (WinError 10055).
-- [x] En `downloader.py`, `except requests.ConnectionError: raise SystemExit(...)` antes del
-  `RequestException`, para cortar la ejecucion si slskd cae en vez de marcar todo como Failed.
-- [x] `distributed_network.disabled: true` en la plantilla de `slskd.yml` (`bootstrap.write_slskd_yml`).
-- [x] `YML_VERSION` + `ensure_slskd_yml()`: la app regenera su `slskd.yml` sola cuando cambia la plantilla.
-
-## Scoring
-- [x] Apostrofes al normalizar: `They're` debe quedar `theyre`, no `they re`. En `normalize_for_match`
-  (y en `loose_title`, que construye la query de busqueda) quitar `'` y `’` antes de sustituir el
-  resto de simbolos por espacio. Ojo: en la query de Soulseek `they re` busca dos terminos sueltos,
-  `theyre` uno; comprobar cual encuentra mas antes de cambiar la query.
-- [x] Timeout de descarga por inactividad, no por tiempo total: en `slskd_download` reiniciar el
-  contador cada vez que cambia `bytesTransferred`; solo rendirse tras DOWNLOAD_WAIT_SEC sin
-  progreso (en wifi lento se cortaban descargas vivas con "Transfer ended: InProgress").
-- [x] `require_title` en `score_candidates`: en las busquedas sin artista (Title, Artist, Album)
-  exigir que `normalize_for_match(loose_title(title))` este contenido en el nombre del fichero
-  normalizado. El 60 % de palabras en comun deja pasar basura con titulos de palabras corrientes
-  (ej. "No Hardcore No Life" -> "Life In The Air (Hardcore Heaven Mix)"). En Exact/Loose se
-  mantiene el filtro laxo porque Soulseek ya filtra por artista.
-- [x] Modo diagnostico: imprimir por que se descarta cada fichero (bitrate, duracion, titulo).
-- [x] Aceptar 192 kbps como ultimo recurso (penalizado, no descartado).
-- [ ] Modo sin puerto (wifi ajeno, sin 50300 abierto): priorizar usuarios con puerto abierto
-  (campo de la respuesta de slskd) para no gastar la cola de 45 s en los que nunca conectan.
-- [ ] Espera larga para candidatos buenos en cola antes del ultimo recurso: NuagistTurtleize tiene
-  FLAC de casi todo pero siempre deja en cola (45 s y fuera) y se acaba bajando un 128. Antes de
-  pasar a `Last resort`, reintentar los candidatos de calidad que quedaron en cola con QUEUE_WAIT
-  largo (3 min).
-- [ ] Memoria de usuarios: recordar durante la ejecucion (y entre ejecuciones, en un json en
-  APP_DIR) de que usuarios se ha descargado bien y cuales han fallado o rechazado. En el
-  scoring, bonus a los buenos y penalizacion a los malos, para que un usuario que ya ha
-  servido (ej. TauAs) salga antes que uno que ya ha fallado (ej. profet) aunque el fichero
-  puntue igual.
 
 ## Mas adelante
 - [ ] OAuth `drive.file` + Google Picker para que otros usuarios puedan usarlo sin service account.

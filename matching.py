@@ -2,6 +2,9 @@ import os
 import re
 from collections import Counter
 
+import log
+from slskd_client import user_score_adjust
+
 MIN_BITRATE = 256
 LOW_BITRATE = 192
 LAST_RESORT_BITRATE = 128
@@ -91,7 +94,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
     is_generic_remix_req = any(x in title.lower() for x in REMIX_KEYWORDS)
 
     rejected = Counter()
-    terms = context_terms(search_artist, album_hint) if strict else []
+    terms = context_terms(search_artist, album_hint)
     viable = []
     fallback = []
     last_resort = []
@@ -114,6 +117,11 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 if terms and not any(t in path_norm for t in terms):
                     rejected['no artist/album in path'] += 1
                     continue
+            if not strict and len(core_phrase(loose_title(title)).split()) <= 1:
+                path_norm = normalize_for_match(f['filename'])
+                if terms and not any(t in path_norm for t in terms):
+                    rejected['short title, no artist in path'] += 1
+                    continue
             if not (check_title_similarity(title, base) or check_title_similarity(loose_title(title), base)):
                 rejected['title'] += 1
                 continue
@@ -125,13 +133,18 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 rejected['no duration'] += 1
                 continue
             penalty = 0
+            odd_duration = False
             if val_dur and expected_duration_sec > 0:
                 duration_delta = val_dur - expected_duration_sec
                 diff = abs(duration_delta)
+                if val_dur < expected_duration_sec * 0.5:
+                    rejected['too short'] += 1
+                    continue
                 if not strong_match:
                     if diff > 600 or duration_delta < -tolerance or duration_delta > max(tolerance * 2, 90):
                         rejected['duration'] += 1
                         continue
+                odd_duration = val_dur < expected_duration_sec * 0.75
                 duration_weight = 1.20 if duration_delta < 0 else 0.45
                 duration_score = int(diff * duration_weight)
                 if strong_match:
@@ -188,6 +201,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
             if not resp.get('hasFreeUploadSlot', True):
                 penalty += 30
             penalty += min(resp.get('queueLength', 0), 50)
+            penalty += user_score_adjust(resp['username'])
 
             final_score = duration_score + penalty
             score_limit = current_tolerance + (60 if strong_match else 0) + 50
@@ -203,6 +217,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 'bitrate': bitrate,
                 'ext': ext,
                 'upload_speed': resp.get('uploadSpeed', 0),
+                'odd_duration': odd_duration,
             }
             (last_resort if desperate else fallback if low_quality else viable).append(candidate)
 
@@ -223,7 +238,7 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
     # acepta 128 kps si no hay nada mas, mejor eso que nada
     last_resort = dedupe_sort(last_resort)
     if not viable and not fallback and rejected:
-        print("   > Rejected: " + ", ".join(f"{v} {k}" for k, v in rejected.most_common()))
+        log.detail("Rejected: " + ", ".join(f"{v} {k}" for k, v in rejected.most_common()))
     if fallback:
-        print(f"   > {len(fallback)} low-bitrate fallback(s)")
+        log.detail(f"{len(fallback)} low-bitrate fallback(s)")
     return viable + fallback, last_resort

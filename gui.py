@@ -7,70 +7,58 @@ from tkinter import scrolledtext, ttk, filedialog
 from PIL import Image, ImageOps, ImageTk
 
 import bootstrap
+import log
 import manager as music_manager
 import sheets
 
 
-class StdoutRedirector:
-    """
-    Redirige los print() hacia un widget de texto de Tkinter,
-    aplicando un color/estilo distinto según el tipo de línea
-    (búsqueda, match, descarga, error...).
-    """
+# Pinta el log en un widget de texto de Tkinter. Recibe los eventos de log.py
+# y mantiene una linea por cancion: el estado de cada cancion se sobreescribe
+# en su sitio en vez de anadir lineas nuevas.
+class LogView:
     def __init__(self, text_widget):
         self.text_widget = text_widget
+        self.marks = {}
         self._configure_tags()
 
     def _configure_tags(self):
         # Definimos cada "tag" una sola vez: nombre + estilo (color, negrita...)
         self.text_widget.tag_configure("search", foreground="#1a73e8")           # azul
-        self.text_widget.tag_configure("match", foreground="#188038", font=("TkDefaultFont", 10, "bold"))  # verde negrita
         self.text_widget.tag_configure("downloading", foreground="#9c27b0")      # morado
         self.text_widget.tag_configure("done", foreground="#188038", font=("TkDefaultFont", 10, "bold"))   # verde negrita
         self.text_widget.tag_configure("error", foreground="#d93025")            # rojo
         self.text_widget.tag_configure("failed", foreground="#d93025", font=("TkDefaultFont", 10, "bold")) # rojo negrita
 
-    def write(self, message):
-        self.text_widget.after(0, self._append, message)
+    def handle(self, kind, song_id, text, tag):
+        self.text_widget.after(0, self._apply, kind, song_id, text, tag)
 
-    def _append(self, message):
-        # Cada print() puede traer varias líneas pegadas (por los \n);
-        # las separamos para poder dar a cada una su propio color.
+    def _apply(self, kind, song_id, text, tag):
         self.text_widget.config(state="normal")
-        lines = message.split("\n")
-        for idx, line in enumerate(lines):
-            if line:
-                tag = self._classify(line)
-                if tag:
-                    self.text_widget.insert(tk.END, line, tag)
-                else:
-                    self.text_widget.insert(tk.END, line)
-            if idx < len(lines) - 1:
+        if kind == "status" and song_id in self.marks:
+            # Borro el estado anterior y escribo el nuevo.
+            mark = self.marks[song_id]
+            self.text_widget.delete(mark, f"{mark} lineend")
+            self.text_widget.insert(mark, text, tag)
+        else:
+            if kind == "song":
+                mark = f"song{len(self.marks)}"
+                self.text_widget.insert(tk.END, text + "  ·  ")
+                self.text_widget.mark_set(mark, "end-1c")
+                self.text_widget.mark_gravity(mark, tk.LEFT)
+                self.marks[song_id] = mark
                 self.text_widget.insert(tk.END, "\n")
+            else:
+                self.text_widget.insert(tk.END, text + "\n", tag)
         self.text_widget.see(tk.END)
         self.text_widget.config(state="disabled")
 
-    def _classify(self, line):
-        # Decide qué tag aplicar según el contenido de la línea.
-        # Importante: el orden importa (de más específico a más genérico).
-        lower = line.lower()
-        if "> search" in lower:
-            return "search"
-        if "> match:" in lower:
-            return "match"
-        if "downloading:" in lower or "downloading..." in lower:
-            return "downloading"
-        if "> done" in lower or ("downloaded" in lower and "failed" not in lower):
-            return "done"
-        if "failed" in lower:
-            return "failed"
-        if "error" in lower:
-            return "error"
-        return None
 
+    def write(self, message):
+        if message.strip():
+            self.handle("line", None, message.rstrip("\n"), None)
+            
     def flush(self):
         pass
-
 
 class MusicManagerGUI:
     def __init__(self, root):
@@ -83,7 +71,10 @@ class MusicManagerGUI:
         self._build_picker()
         self._build_runner()
 
-        sys.stdout = StdoutRedirector(self.log_box)
+        self.log_view = LogView(self.log_box)
+        log.set_handler(self.log_view.handle)
+        log.open_file(bootstrap.APP_DIR / 'music_manager.log')
+        sys.stdout = self.log_view
         if bootstrap.is_configured():
             self.show_picker()
         else:
@@ -346,7 +337,7 @@ class MusicManagerGUI:
         try:
             music_manager.run_manager(name)
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            log.line(f"Unexpected error: {e}", "error")
         finally:
             # Volvemos a habilitar el botón desde el hilo principal
             self.root.after(0, self._on_finished)
