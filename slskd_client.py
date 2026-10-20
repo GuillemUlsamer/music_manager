@@ -130,7 +130,18 @@ def slskd_remove_transfer(username, transfer_id):
     SESSION.delete(base, headers=slskd_headers(), params={'remove': 'true'}, timeout=10)  # borra
 
 def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
-    search = slskd_post("/searches", {"searchText": query})
+    # slskd limita las busquedas seguidas; con varios hilos devuelve 429 y hay que esperar
+    for _ in range(5):
+        try:
+            search = slskd_post("/searches", {"searchText": query})
+            break
+        except requests.HTTPError as e:
+            if e.response.status_code != 429:
+                raise
+            log.detail("slskd search limit, waiting 3s")
+            time.sleep(3)
+    else:
+        raise requests.HTTPError("slskd search limit reached")
     search_id = search["id"]
 
     deadline = time.time() + wait_sec

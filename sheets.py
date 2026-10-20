@@ -190,7 +190,6 @@ def download_row(worksheet, row_num, artist, title, file_path, exp_seconds, albu
     log.song((worksheet.title, row_num), f"[{worksheet.title}] {filename}")
     worksheet.update_cell(row_num, COL_STATUS + 1, "Downloading...")
 
-    exp_seconds = parse_duration(exp_seconds)
     try:
         final_path, note = download_track(artist, title, file_path, expected_duration_sec=exp_seconds, tolerance=60, album_hint=album_hint)
     except SystemExit:
