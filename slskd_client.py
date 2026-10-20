@@ -101,6 +101,7 @@ def stop_slskd(proc):
         proc.wait(timeout=10)
     except subprocess.TimeoutExpired:
         proc.kill()
+    log.line("slskd stopped.")
 
 def cleanup_empty_dirs(path):
     inbox = os.path.abspath(slskd_inbox())
