@@ -195,7 +195,7 @@ def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC, queue_wai
                 last_bytes = done
                 last_progress = time.time()
                 if state == 'InProgress' and file_info['size']:
-                    log.status(f"Downloading {done * 100 // file_info['size']}% from {username}", "downloading")
+                    log.status(f"Downloading {done * 100 // file_info['size']}%", "downloading")
     except SystemExit:
         if transfer:
             slskd_remove_transfer(username, transfer['id'])
