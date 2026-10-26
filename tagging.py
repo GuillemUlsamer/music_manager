@@ -46,7 +46,8 @@ def tag_file(filepath, artist, title, album, year='', track_no='', cover_bytes=N
             audio['date'] = str(year)
         if track_no:
             audio['tracknumber'] = str(track_no)
-        audio.save()
+        # ID3v2.3: el movil no lee el ano en v2.4 (TDRC), en 2.3 va como TYER
+        audio.save(v2_version=3)
 
         if cover_bytes:
             tags = ID3(filepath)
