@@ -4,6 +4,7 @@
 #   detail(text)        solo al fichero de log (busquedas, rechazos, errores...)
 #   line(text, tag)     linea suelta (arranque, fin)
 import threading
+from time import time
 
 # _handler lo pone el GUI; _current es la cancion actual, distinta en cada hilo
 _handler = None
@@ -24,7 +25,7 @@ def _emit(kind, text, tag=None):
     song_id = getattr(_current, 'song', None)
     if _file:
         with _lock:
-            _file.write(f"{song_id or '-'} | {text}\n")
+            _file.write(f"{time.strftime('%H:%M:%S')} {song_id or '-'} | {text}\n")
             _file.flush()
     if kind == 'detail':
         return
