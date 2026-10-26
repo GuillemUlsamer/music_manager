@@ -3,7 +3,7 @@ import requests
 import log
 from tagging import strip_discogs_suffix
 from matching import loose_title, score_candidates, GENERIC_WORDS
-from slskd_client import slskd_search, slskd_download, QUEUE_WAIT_SEC, LONG_QUEUE_WAIT_SEC
+from slskd_client import slskd_search, slskd_download, QUEUE_WAIT_SEC, LONG_QUEUE_WAIT_SEC, BUSY_USERS
 
 MAX_DOWNLOAD_TRIES = 6  
 
@@ -61,6 +61,8 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
             last_resort += desperate
             log.detail(f"{len(responses)} users, {len(candidates)} viable")
 
+        # los usuarios a los que ya les esta descargando otro hilo van al final, para no hacernos cola a nosotros mismos
+        candidates = sorted(candidates, key=lambda c: c['username'] in BUSY_USERS)
         tries = 0
         for c in candidates:
             key = (c['username'], c['file']['filename'])

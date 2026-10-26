@@ -27,6 +27,8 @@ DOWNLOAD_WAIT_SEC = 240
 # ejecuciones. El scoring la usa para ordenar: antes los que ya han servido.
 _users = None
 _users_lock = threading.Lock()
+BUSY_USERS = set()
+_busy_lock = threading.Lock()
 
 def _load_users():
     global _users
@@ -166,6 +168,16 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
     return responses
 
 def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC, queue_wait_sec=QUEUE_WAIT_SEC):
+    username = candidate['username']
+    with _busy_lock:
+        BUSY_USERS.add(username)
+    try:
+        return _slskd_download(candidate, output_path, wait_sec, queue_wait_sec)
+    finally:
+        with _busy_lock:
+            BUSY_USERS.discard(username)
+
+def _slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC, queue_wait_sec=QUEUE_WAIT_SEC):
     username = candidate['username']
     file_info = candidate['file']
     remote_name = file_info['filename'].replace('\\', '/').split('/')[-1]
