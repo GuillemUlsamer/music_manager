@@ -4,7 +4,7 @@
 #   detail(text)        solo al fichero de log (busquedas, rechazos, errores...)
 #   line(text, tag)     linea suelta (arranque, fin)
 import threading
-from time import time
+import time
 
 # _handler lo pone el GUI; _current es la cancion actual, distinta en cada hilo
 _handler = None
