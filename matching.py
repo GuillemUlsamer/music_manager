@@ -181,8 +181,8 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                     rejected['not a remix'] += 1
                     continue
             else:
-                if any(kw in base_lower for kw in REMIX_KEYWORDS) and diff > 5:
-                    penalty += 100
+                if any(kw in base_lower for kw in REMIX_KEYWORDS):
+                    penalty += 100 if diff > 5 else 30
 
             if strong_match:
                 penalty -= 20
