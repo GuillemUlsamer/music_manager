@@ -117,10 +117,19 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 if terms and not any(t in path_norm for t in terms):
                     rejected['no artist/album in path'] += 1
                     continue
-            if not strict and len(core_phrase(loose_title(title)).split()) <= 1:
+            title_words = core_phrase(loose_title(title)).split()
+            if not strict and len(title_words) <= 1:
                 path_norm = normalize_for_match(f['filename'])
                 if terms and not any(t in path_norm for t in terms):
                     rejected['short title, no artist in path'] += 1
+                    continue
+            if len(title_words) == 1:
+                # cuando el titulo es solo una palabra, ser mas estrictos con que la palabra aparezca
+                file_title = re.split(r'[\s_]-[\s_]', base)[-1]
+                artist_words = set(' '.join(terms).split())
+                extra = [w for w in core_phrase(file_title).split() if w != title_words[0] and w not in artist_words]
+                if title_words[0] not in core_phrase(file_title).split() or len(extra) > 1:
+                    rejected['short title, file title differs'] += 1
                     continue
             if not (check_title_similarity(title, base) or check_title_similarity(loose_title(title), base)):
                 rejected['title'] += 1
