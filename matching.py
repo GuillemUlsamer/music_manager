@@ -127,7 +127,8 @@ def score_candidates(responses, search_artist, title, expected_duration_sec=0, t
                 # cuando el titulo es solo una palabra, ser mas estrictos con que la palabra aparezca
                 file_title = re.split(r'[\s_]-[\s_]', base)[-1]
                 artist_words = set(' '.join(terms).split())
-                extra = [w for w in core_phrase(file_title).split() if w != title_words[0] and w not in artist_words]
+                known = artist_words | set(core_phrase(title).split())
+                extra = [w for w in core_phrase(file_title).split() if w != title_words[0] and w not in known]
                 if title_words[0] not in core_phrase(file_title).split() or len(extra) > 1:
                     rejected['short title, file title differs'] += 1
                     continue
