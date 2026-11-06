@@ -19,6 +19,7 @@ class LogView:
     def __init__(self, text_widget):
         self.text_widget = text_widget
         self.marks = {}
+        self.count = 0
         self._configure_tags()
 
     def _configure_tags(self):
@@ -41,7 +42,8 @@ class LogView:
             self.text_widget.insert(mark, text, tag)
         else:
             if kind == "song":
-                mark = f"song{len(self.marks)}"
+                self.count += 1
+                mark = f"song{self.count}"
                 self.text_widget.insert(tk.END, text + "  ·  ")
                 self.text_widget.mark_set(mark, "end-1c")
                 self.text_widget.mark_gravity(mark, tk.LEFT)
@@ -303,15 +305,16 @@ class MusicManagerGUI:
         bottom_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         self.status_label = tk.Label(bottom_frame, text="Ready.", anchor="w")
         self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.copy_button = tk.Button(bottom_frame, text="Copy output", cursor="hand2", command=self._copy_output)
+        self.copy_button = tk.Button(bottom_frame, text="Copy detailed log", cursor="hand2", command=self._copy_output)
         self.copy_button.pack(side=tk.LEFT, padx=(0, 8))
         self.stop_button = tk.Button(bottom_frame, text="Stop", cursor="hand2", command=self._on_stop)
         self.stop_button.pack(side=tk.LEFT)
 
     def _copy_output(self):
         self.root.clipboard_clear()
-        self.root.clipboard_append(self.log_box.get("1.0", tk.END))
-        self.status_label.config(text="Output copied to clipboard.")
+        detailed = (bootstrap.APP_DIR / 'music_manager.log').read_text(encoding='utf-8')
+        self.root.clipboard_append(log.summary_text() + "\n\n----- detailed -----\n" + detailed)
+        self.status_label.config(text="Detailed log copied to clipboard.")
 
     def show_picker(self):
         self.setup.pack_forget()

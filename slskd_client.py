@@ -27,6 +27,8 @@ DOWNLOAD_WAIT_SEC = 240
 # ejecuciones. El scoring la usa para ordenar: antes los que ya han servido.
 _users = None
 _users_lock = threading.Lock()
+BUSY_USERS = set()
+_busy_lock = threading.Lock()
 
 def _load_users():
     global _users
@@ -130,7 +132,18 @@ def slskd_remove_transfer(username, transfer_id):
     SESSION.delete(base, headers=slskd_headers(), params={'remove': 'true'}, timeout=10)  # borra
 
 def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
-    search = slskd_post("/searches", {"searchText": query})
+    # slskd limita las busquedas seguidas; con varios hilos devuelve 429 y hay que esperar
+    for _ in range(5):
+        try:
+            search = slskd_post("/searches", {"searchText": query})
+            break
+        except requests.HTTPError as e:
+            if e.response.status_code != 429:
+                raise
+            log.detail("slskd search limit, waiting 3s")
+            time.sleep(3)
+    else:
+        raise requests.HTTPError("slskd search limit reached")
     search_id = search["id"]
 
     deadline = time.time() + wait_sec
@@ -155,6 +168,16 @@ def slskd_search(query, wait_sec=SEARCH_WAIT_SEC):
     return responses
 
 def slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC, queue_wait_sec=QUEUE_WAIT_SEC):
+    username = candidate['username']
+    with _busy_lock:
+        BUSY_USERS.add(username)
+    try:
+        return _slskd_download(candidate, output_path, wait_sec, queue_wait_sec)
+    finally:
+        with _busy_lock:
+            BUSY_USERS.discard(username)
+
+def _slskd_download(candidate, output_path, wait_sec=DOWNLOAD_WAIT_SEC, queue_wait_sec=QUEUE_WAIT_SEC):
     username = candidate['username']
     file_info = candidate['file']
     remote_name = file_info['filename'].replace('\\', '/').split('/')[-1]
