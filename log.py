@@ -11,6 +11,8 @@ _handler = None
 _current = threading.local()
 _file = None
 _lock = threading.Lock()
+# resumen legible (goal / downloaded por cancion); se pega delante del log bruto al copiar
+_summary = []
 
 def set_handler(handler):
     global _handler
@@ -20,6 +22,7 @@ def open_file(path):
     global _file
     # se vacia en cada arranque de la app
     _file = open(path, 'w', encoding='utf-8')
+    _summary.clear()
 
 def _emit(kind, text, tag=None):
     song_id = getattr(_current, 'song', None)
@@ -47,3 +50,9 @@ def detail(text):
 def line(text, tag=None):
     _emit('line', text, tag)
 
+def summary(text):
+    with _lock:
+        _summary.append(text)
+
+def summary_text():
+    return '\n'.join(_summary)

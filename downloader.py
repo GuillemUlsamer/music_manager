@@ -86,6 +86,9 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
                 queued.append(c)
             if final_file:
                 note = 'verify' if (attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or not c['duration'] or c['odd_duration']) else ''
+                quality = 'FLAC' if c['ext'] == '.flac' else f"{c['bitrate'] or '?'}kbps"
+                log.summary(f"goal:       {search_artist} - {title} ({duration_fmt})\n"
+                            f"downloaded: {c['title']} ({dur//60}:{dur%60:02d}) {quality}{' verify' if note else ''}\n")
                 return final_file, note
 
     log.detail("No matching track found in any source.")

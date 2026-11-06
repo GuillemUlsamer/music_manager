@@ -207,3 +207,4 @@ def download_row(worksheet, row_num, artist, title, file_path, exp_seconds, albu
         worksheet.update_cell(row_num, COL_STATUS + 1, "Failed, Do it manually") 
         log.status("Failed", "failed")
         review.append(f"{filename}: failed")
+        log.summary(f"goal:       {filename}\nFAILED\n")

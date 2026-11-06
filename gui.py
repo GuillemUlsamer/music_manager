@@ -312,7 +312,8 @@ class MusicManagerGUI:
 
     def _copy_output(self):
         self.root.clipboard_clear()
-        self.root.clipboard_append((bootstrap.APP_DIR / 'music_manager.log').read_text(encoding='utf-8'))
+        detailed = (bootstrap.APP_DIR / 'music_manager.log').read_text(encoding='utf-8')
+        self.root.clipboard_append(log.summary_text() + "\n\n----- detailed -----\n" + detailed)
         self.status_label.config(text="Detailed log copied to clipboard.")
 
     def show_picker(self):
