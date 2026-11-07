@@ -18,7 +18,7 @@ from downloader import download_track
 
 CREDENTIALS_FILE = bootstrap.CREDENTIALS_FILE
 
-THREADS = 3
+THREADS = 5
 
 # Columns (0-indexed)
 COL_ARTIST = 1
