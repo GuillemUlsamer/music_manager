@@ -17,7 +17,7 @@ from stop import check_stop
 
 SESSION = requests.Session()
 USERS_FILE = APP_DIR / 'users.json'
-SEARCH_WAIT_SEC = 5
+SEARCH_WAIT_SEC = 3
 QUEUE_WAIT_SEC = 45
 LONG_QUEUE_WAIT_SEC = 180
 DOWNLOAD_WAIT_SEC = 240
