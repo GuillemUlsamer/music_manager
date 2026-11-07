@@ -32,6 +32,12 @@ def clean_title(name):
     name = name.replace('`', "'").replace('’', "'")
     return smart_title(re.sub(r'\s+', ' ', name).strip())
 
+def file_duration(filepath):
+    try:
+        return int(MP3(filepath).info.length)
+    except Exception:
+        return 0
+
 def tag_file(filepath, artist, title, album, year='', track_no='', cover_bytes=None):
     try:
         audio = MP3(filepath, ID3=EasyID3)

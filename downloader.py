@@ -1,7 +1,7 @@
 import requests
 
 import log
-from tagging import strip_discogs_suffix
+from tagging import strip_discogs_suffix, file_duration
 from matching import loose_title, score_candidates, GENERIC_WORDS
 from slskd_client import slskd_search, slskd_download, QUEUE_WAIT_SEC, LONG_QUEUE_WAIT_SEC, BUSY_USERS
 
@@ -85,10 +85,12 @@ def download_track(artist, title, output_path, expected_duration_sec=0, toleranc
             if not final_file and c.pop('queued', False) and queue_wait == QUEUE_WAIT_SEC:
                 queued.append(c)
             if final_file:
-                note = 'verify' if (attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or not c['duration'] or c['odd_duration']) else ''
+                real = file_duration(final_file)
+                odd = expected_duration_sec > 0 and real and real < expected_duration_sec * 0.75
+                note = 'verify' if (attempt['source'] in ('Soulseek (Title)', 'Soulseek (Artist)') or odd) else ''
                 quality = 'FLAC' if c['ext'] == '.flac' else f"{c['bitrate'] or '?'}kbps"
                 log.summary(f"goal:       {search_artist} - {title} ({duration_fmt})\n"
-                            f"downloaded: {c['title']} ({dur//60}:{dur%60:02d}) {quality}{' verify' if note else ''}\n")
+                            f"downloaded: {c['title']} ({real//60}:{real%60:02d}) {quality}{' verify' if note else ''}\n")
                 return final_file, note
 
     log.detail("No matching track found in any source.")
