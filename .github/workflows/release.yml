@@ -22,7 +22,7 @@ jobs:
           python -m pip install pyinstaller
 
       - name: Build app
-        run: python -m PyInstaller --noconfirm MusicManager.spec
+        run: python -m PyInstaller --noconfirm Mulsa.spec
 
       - name: Build installer
         shell: pwsh
@@ -33,4 +33,4 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: installer/MusicManagerSetup-*.exe
+          files: installer/MulsaSetup-*.exe

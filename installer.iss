@@ -1,8 +1,8 @@
-#define AppName "Music Manager"
+#define AppName "Mulsa"
 #ifndef AppVersion
   #define AppVersion "2.0.0"
 #endif
-#define AppExe "MusicManager.exe"
+#define AppExe "Mulsa.exe"
 
 [Setup]
 AppId={{B7E4F2A1-5C3D-4E8F-9A6B-1D2C3E4F5A6B}
@@ -13,7 +13,7 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 UninstallDisplayIcon={app}\{#AppExe}
 OutputDir=installer
-OutputBaseFilename=MusicManagerSetup-{#AppVersion}
+OutputBaseFilename=MulsaSetup-{#AppVersion}
 SetupIconFile=assets\icon.ico
 Compression=lzma2
 SolidCompression=yes
@@ -28,7 +28,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "dist\MusicManager\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "dist\Mulsa\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
