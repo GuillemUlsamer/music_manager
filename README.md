@@ -35,7 +35,7 @@ Incluye un script de Google Apps Script (`playlistHelper.gs`) para importar trac
 
 ## Instalación
 
-1.  Descarga `MulsaSetup-x.x.x.exe` de la página de [Releases](https://github.com/GuillemUlsamer/music_manager/releases) y ejecútalo. Crea un acceso directo en el escritorio.
+1.  Descarga `MulsaSetup-x.x.x.exe` de la página de [Releases](https://github.com/GuillemUlsamer/mulsa/releases) y ejecútalo. Crea un acceso directo en el escritorio.
 2.  Abre Mulsa. La primera vez aparece la pantalla de configuración:
     *   Usuario y contraseña de Soulseek.
     *   Carpeta de música: donde se guardarán las playlists (una subcarpeta por cada una).
@@ -46,8 +46,8 @@ Incluye un script de Google Apps Script (`playlistHelper.gs`) para importar trac
 
 # aparte
     Si quieres ejecutarlo o modificarlo desde el código:
-    git clone https://github.com/GuillemUlsamer/music_manager.git
-    cd music_manager
+    git clone https://github.com/GuillemUlsamer/mulsa.git
+    cd mulsa
     pip install -r requirements.txt
     python gui.py
 
