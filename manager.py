@@ -38,7 +38,7 @@ def stop_manager():
     STOP_EVENT.set()
 
 def main():
-    parser = argparse.ArgumentParser(description="Music Manager v2")
+    parser = argparse.ArgumentParser(description="Mulsa")
     parser.add_argument("name", help="Name of the spreadsheet (and output folder)")
     args = parser.parse_args()
     run_manager(args.name)

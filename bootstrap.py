@@ -1,6 +1,6 @@
 """
-Primer arranque de Music Manager: deja slskd descargado y configurado sin que el
-usuario toque YAML, keys ni carpetas. Los datos viven en %LOCALAPPDATA%\MusicManager.
+Primer arranque de Mulsa: deja slskd descargado y configurado sin que el
+usuario toque YAML, keys ni carpetas. Los datos viven en %LOCALAPPDATA%\Mulsa.
 """
 import os
 import io
@@ -14,8 +14,17 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Datos de la app: %LOCALAPPDATA%\MusicManager (Windows). Fuera del codigo.
-APP_DIR = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'MusicManager'
+# Datos de la app: %LOCALAPPDATA%\Mulsa (Windows). Fuera del codigo.
+APP_DIR = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'Mulsa'
+
+# La app se llamaba Music Manager: si existe la carpeta vieja y no la nueva, se renombra
+# y se actualizan las rutas absolutas que config.json guarda (exe, app_dir).
+_OLD_APP_DIR = APP_DIR.with_name('MusicManager')
+if _OLD_APP_DIR.exists() and not APP_DIR.exists():
+    _OLD_APP_DIR.rename(APP_DIR)
+    _cfg = APP_DIR / 'config.json'
+    if _cfg.exists():
+        _cfg.write_text(_cfg.read_text(encoding='utf-8').replace(json.dumps(str(_OLD_APP_DIR))[1:-1], json.dumps(str(APP_DIR))[1:-1]), encoding='utf-8')
 
 TOOLS_DIR = APP_DIR / 'tools'
 SLSKD_DIR = TOOLS_DIR / 'slskd'
@@ -28,7 +37,7 @@ CONFIG_FILE = APP_DIR / 'config.json'
 CREDENTIALS_FILE = APP_DIR / 'credentials.json'
 
 # Carpeta de musica: la elige el usuario en la pantalla 0; esto es solo el valor por defecto.
-DEFAULT_MUSIC_DIR = Path.home() / 'Music' / 'Music Manager'
+DEFAULT_MUSIC_DIR = Path.home() / 'Music' / 'Mulsa'
 
 WEB_PORT = 5030
 LISTEN_PORT = 50300
@@ -86,11 +95,11 @@ def download_slskd(progress):
 
 def write_slskd_yml(username, password, api_key, music_dir, share_dir=None, listen_port=LISTEN_PORT):
     shares = f"    - {share_dir}\n" if share_dir else ""
-    yml = f"""# Generado por Music Manager. No editar a mano: se regenera desde la app.
+    yml = f"""# Generado por Mulsa. No editar a mano: se regenera desde la app.
 soulseek:
   username: {username}
   password: "{password}"
-  description: "music_manager"
+  description: "mulsa"
   listen_port: {listen_port}
   distributed_network:
     disabled: true

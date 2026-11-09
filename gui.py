@@ -62,10 +62,10 @@ class LogView:
     def flush(self):
         pass
 
-class MusicManagerGUI:
+class MulsaGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Music Manager")
+        self.root.title("Mulsa")
         self.root.geometry("1200x520")
         self.playlist_name = None
 
@@ -75,7 +75,7 @@ class MusicManagerGUI:
 
         self.log_view = LogView(self.log_box)
         log.set_handler(self.log_view.handle)
-        log.open_file(bootstrap.APP_DIR / 'music_manager.log')
+        log.open_file(bootstrap.APP_DIR / 'mulsa.log')
         sys.stdout = self.log_view
         if bootstrap.is_configured():
             self.show_picker()
@@ -85,7 +85,7 @@ class MusicManagerGUI:
     # pantalla de configuracion del primer arranque
     def _build_setup(self):
         self.setup = tk.Frame(self.root, padx=40, pady=30)
-        self.setup_title = tk.Label(self.setup, text="Set up Music Manager", font=("TkDefaultFont", 13, "bold"))
+        self.setup_title = tk.Label(self.setup, text="Set up Mulsa", font=("TkDefaultFont", 13, "bold"))
         self.setup_title.pack(anchor="w", pady=(0, 4))
         tk.Label(self.setup, anchor="w", justify="left", wraplength=800,
                  text="slskd (the Soulseek client) will be downloaded and configured automatically. "
@@ -197,7 +197,7 @@ class MusicManagerGUI:
             self.setup_port.insert(0, str(bootstrap.LISTEN_PORT))
             if bootstrap.CREDENTIALS_FILE.exists():
                 self.setup_creds.insert(0, str(bootstrap.CREDENTIALS_FILE))
-            self.setup_title.config(text="Set up Music Manager")
+            self.setup_title.config(text="Set up Mulsa")
             self.setup_button.config(text="Set up")
             self.setup_cancel.pack_forget()
         self.setup_status.config(text="")
@@ -312,7 +312,7 @@ class MusicManagerGUI:
 
     def _copy_output(self):
         self.root.clipboard_clear()
-        detailed = (bootstrap.APP_DIR / 'music_manager.log').read_text(encoding='utf-8')
+        detailed = (bootstrap.APP_DIR / 'mulsa.log').read_text(encoding='utf-8')
         self.root.clipboard_append(log.summary_text() + "\n\n----- detailed -----\n" + detailed)
         self.status_label.config(text="Detailed log copied to clipboard.")
 
@@ -356,5 +356,5 @@ class MusicManagerGUI:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = MusicManagerGUI(root)
+    app = MulsaGUI(root)
     root.mainloop()

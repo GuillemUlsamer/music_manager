@@ -1,4 +1,4 @@
-# Music Manager & Playlist Downloader
+# Mulsa
 
 Este proyecto sincroniza una carpeta de música local con una hoja de cálculo de Google Sheets.
 
@@ -35,25 +35,25 @@ Incluye un script de Google Apps Script (`playlistHelper.gs`) para importar trac
 
 ## Instalación
 
-1.  Descarga `MusicManagerSetup-x.x.x.exe` de la página de [Releases](https://github.com/GuillemUlsamer/music_manager/releases) y ejecútalo. Crea un acceso directo en el escritorio.
-2.  Abre Music Manager. La primera vez aparece la pantalla de configuración:
+1.  Descarga `MulsaSetup-x.x.x.exe` de la página de [Releases](https://github.com/GuillemUlsamer/mulsa/releases) y ejecútalo. Crea un acceso directo en el escritorio.
+2.  Abre Mulsa. La primera vez aparece la pantalla de configuración:
     *   Usuario y contraseña de Soulseek.
     *   Carpeta de música: donde se guardarán las playlists (una subcarpeta por cada una).
     *   Carpeta a compartir (opcional): lo que ofreces a la red de Soulseek. Compartir algo hace que más usuarios te sirvan.
     *   `credentials.json` de Google.
     *   Puerto de Soulseek (deja 50300 si no sabes qué es).
-3.  Pulsa **Set up**. Descarga slskd (el cliente de Soulseek) y lo configura; tarda un minuto. Todo queda en `%LOCALAPPDATA%\MusicManager`, fuera de la carpeta de música.
+3.  Pulsa **Set up**. Descarga slskd (el cliente de Soulseek) y lo configura; tarda un minuto. Todo queda en `%LOCALAPPDATA%\Mulsa`, fuera de la carpeta de música.
 
 # aparte
     Si quieres ejecutarlo o modificarlo desde el código:
-    git clone https://github.com/GuillemUlsamer/music_manager.git
-    cd music_manager
+    git clone https://github.com/GuillemUlsamer/mulsa.git
+    cd mulsa
     pip install -r requirements.txt
     python gui.py
 
     Para generar el instalador (necesitas [Inno Setup 6](https://jrsoftware.org/isdl.php) instalado):
     python -m pip install pyinstaller
-    python -m PyInstaller --noconfirm MusicManager.spec
+    python -m PyInstaller --noconfirm Mulsa.spec
     & "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe" installer.iss
 
 ## Configuración de la Hoja de Cálculo
@@ -124,7 +124,7 @@ Además del import por Release ID, el menú también incluye:
 
 ## Uso
 
-Abre Music Manager desde el acceso directo. Aparecen tus hojas de Google Drive como tarjetas con su portada. Pulsa una y empieza a descargar las canciones marcadas en la carpeta de música que configuraste, en una subcarpeta `NOMBRE PLAYLIST`.
+Abre Mulsa desde el acceso directo. Aparecen tus hojas de Google Drive como tarjetas con su portada. Pulsa una y empieza a descargar las canciones marcadas en la carpeta de música que configuraste, en una subcarpeta `NOMBRE PLAYLIST`.
 
 El log muestra cada búsqueda, el candidato elegido y el estado de la descarga. **Stop** para y cierra slskd. **Copy output** copia el log al portapapeles. **Settings** vuelve a la pantalla de configuración.
 
@@ -150,7 +150,7 @@ En la GUI, escribe el nombre del spreadsheet, pulsa **Ejecutar** y revisa el log
 
 slskd no ha podido conectar. Lánzalo a mano para ver el motivo:
 
-& "$env:LOCALAPPDATA\MusicManager\tools\slskd\slskd.exe" --app-dir "$env:LOCALAPPDATA\MusicManager\tools\slskd_data"
+& "$env:LOCALAPPDATA\Mulsa\tools\slskd\slskd.exe" --app-dir "$env:LOCALAPPDATA\Mulsa\tools\slskd_data"
 
 
 Si dice `Failed to start listening on 0.0.0.0:50300`, Windows tiene el puerto reservado (`netsh interface ipv4 show excludedportrange protocol=tcp`). Cambia el puerto en **Settings** a uno fuera de esos rangos, por ejemplo 2234.
@@ -176,4 +176,4 @@ No hay que repetir nada de Google Cloud ni volver a compartir la hoja.
 *   `tagging.py`: Limpieza de nombres y etiquetas ID3.
 *   `playlistHelper.gs`: Script para Google Sheets (Google Apps Script).
 *   `requirements.txt`: Lista de librerías de Python necesarias.
-*   `MusicManager.spec` e `installer.iss`: Generación del exe y del instalador.
+*   `Mulsa.spec` e `installer.iss`: Generación del exe y del instalador.
