@@ -150,18 +150,10 @@ def save_settings(body: dict):
                 share_dir=share,
                 credentials_src=creds,
                 progress=log.line,
-                listen_port=port,
+                listen_port=port_num,
             )
         except Exception as e:
             log.line(f"Error during setup: {e}", "error")
 
     threading.Thread(target=work, daemon=True).start()
     return {"status": "started"}
-
-    # TODO: lo que hacia start_setup + _setup_thread: validar (usuario y password obligatorios,
-    # puerto numerico, carpeta de musica), y llamar a bootstrap.run_setup(...) en un hilo.
-    # El progreso que run_setup manda por `progress` lo puedes reenviar como evento:
-    #   progress=lambda msg: log.line(msg)
-    # y Angular lo ve por /events igual que el resto.
-    # Devolver {"status": "started"}; errores de validacion con HTTPException(400, "mensaje").
-    raise HTTPException(501, "not implemented")
