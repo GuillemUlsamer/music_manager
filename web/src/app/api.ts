@@ -37,7 +37,7 @@ export class Api {
     log(){
         return this.http.get(`${this.base}/log`, { responseType: 'text' });
     }
-    saveSettings(body: Settings & {soulseek_password: string}) {
+    saveSettings(body: Omit<Settings, 'configured'> & {soulseek_password: string}) {
         return this.http.post(`${this.base}/settings`, body);
     }
     run(name: string){

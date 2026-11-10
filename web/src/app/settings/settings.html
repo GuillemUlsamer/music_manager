@@ -1,0 +1,11 @@
+<h1>Settings</h1>
+<form [formGroup]="form" (ngSubmit)="save()">
+  <label>Soulseek username <input formControlName="soulseek_username" /></label>
+  <label>Soulseek password <input type="password" formControlName="soulseek_password" /></label>
+  <label>Music folder <input formControlName="music_dir" /></label>
+  <label>Shared folder (optional) <input formControlName="share_dir" /></label>
+  <label>Soulseek port <input type="number" formControlName="listen_port" /></label>
+  <label>credentials.json <input formControlName="credentials_file" /></label>
+  <button type="submit" [disabled]="saving()">Save</button>
+  <p>{{ status() }}</p>
+</form>
