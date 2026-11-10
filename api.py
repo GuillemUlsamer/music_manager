@@ -148,7 +148,7 @@ def save_settings(body: dict):
                 password=pwd,
                 music_dir=music,
                 share_dir=share,
-                credentials_src=creds,
+                credentials_file=creds,
                 progress=log.line,
                 listen_port=port_num,
             )
