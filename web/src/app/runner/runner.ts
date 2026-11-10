@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy, inject, signal, input} from '@angular/core';
 import { Api, LogEvent } from '../api';
 import { Subscription } from 'rxjs';
+import { RouterLink } from '@angular/router';
 
 interface Item {
   id: string | null;
@@ -10,7 +11,7 @@ interface Item {
 }
 
 @Component({
-  imports: [],
+  imports: [RouterLink],
   selector: 'app-runner',
   styleUrl: './runner.scss',
   templateUrl: './runner.html',

@@ -1,3 +1,6 @@
+@if (!api.running()) {
+    <button routerLink="/">Playlists</button>
+}
 <button (click)="run('Brain Damage')" [disabled]="api.running()">Run</button>
 @if (api.running()) {
     <button (click)="stop()">Stop</button>
