@@ -1,10 +1,10 @@
 import { Component, inject, signal, OnInit} from '@angular/core';
-import { Router} from '@angular/router';
+import { Router, RouterLink} from '@angular/router';
 import { Api } from '../api';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 
 @Component({
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink],
   selector: 'app-settings',
   styleUrl: './settings.scss',
   templateUrl: './settings.html',

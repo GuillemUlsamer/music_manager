@@ -17,9 +17,8 @@ interface Row {
 })
 
 export class Runner implements OnInit, OnDestroy {
-  private api = inject(Api);
+  api = inject(Api);
   private sub?: Subscription;
-  running = signal(false);
   rows = signal<Row[]>([]);
   lines = signal<string[]>([]);
   name = input.required<string>();
@@ -28,9 +27,6 @@ export class Runner implements OnInit, OnDestroy {
     this.sub = this.api.events().subscribe(e => { 
       this.apply(e);
     });
-    this.api.status().subscribe(s => {
-      this.running.set(s.running);
-    });
   }
 
   ngOnDestroy() {
@@ -38,13 +34,21 @@ export class Runner implements OnInit, OnDestroy {
   }
 
   run (name: string) {
+    this.lines.set([]);
+    this.rows.set([]);
     this.api.run(name).subscribe(() => {
-      this.running.set(true);
+      this.api.running.set(true);
     });
   }
 
   stop() {
     this.api.stop().subscribe();
+  }
+
+  copyLog() {
+    this.api.log().subscribe(log => {
+      navigator.clipboard.writeText(log);
+    });
   }
 
   private apply(e: LogEvent) {
@@ -59,7 +63,7 @@ export class Runner implements OnInit, OnDestroy {
       );
     } else {
       this.lines.update(l => [...l, e.text]);
-      if (e.text.startsWith('Finished') || e.text.startsWith('Stopped')) this.running.set(false);
+      if (e.text.startsWith('Finished') || e.text.startsWith('Stopped')) this.api.running.set(false);
     }
   }
 }

@@ -1,5 +1,8 @@
-<button (click)="run('Brain Damage')">Run</button>
-<button (click)="stop()" [disabled]="!running()">Stop</button>
+<button (click)="run('Brain Damage')" [disabled]="api.running()">Run</button>
+@if (api.running()) {
+    <button (click)="stop()">Stop</button>
+}
+<button (click)="copyLog()" [disabled]="api.running()">Copy Log</button>
 
 @for (row of rows(); track row.id) {
     <div class="row">
