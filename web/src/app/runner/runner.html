@@ -4,13 +4,11 @@
 }
 <button (click)="copyLog()" [disabled]="api.running()">Copy Log</button>
 
-@for (row of rows(); track row.id) {
-    <div class="row">
-        <span>{{ row.text }}</span>
-        <span class="status" [class]="row.tag">{{ row.status }}</span>
+@for (i of items(); track $index) {
+    <div class="row" [class]="i.tag">
+        <span>{{ i.text }}</span>
+        @if (i.status) {
+            <span class="status">{{ i.status }}</span>
+        }
     </div>
-}
-
-@for (line of lines(); track $index) {
-    <div class="line">{{ line }}</div>
 }

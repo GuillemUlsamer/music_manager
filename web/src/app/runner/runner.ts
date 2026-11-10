@@ -2,8 +2,8 @@ import { Component, OnInit, OnDestroy, inject, signal, input} from '@angular/cor
 import { Api, LogEvent } from '../api';
 import { Subscription } from 'rxjs';
 
-interface Row {
-  id: string;
+interface Item {
+  id: string | null;
   text: string;
   status: string;
   tag: string | null;  
@@ -19,8 +19,7 @@ interface Row {
 export class Runner implements OnInit, OnDestroy {
   api = inject(Api);
   private sub?: Subscription;
-  rows = signal<Row[]>([]);
-  lines = signal<string[]>([]);
+  items = signal<Item[]>([]);
   name = input.required<string>();
 
   ngOnInit() {
@@ -34,8 +33,7 @@ export class Runner implements OnInit, OnDestroy {
   }
 
   run (name: string) {
-    this.lines.set([]);
-    this.rows.set([]);
+    this.items.set([]);
     this.api.run(name).subscribe(() => {
       this.api.running.set(true);
     });
@@ -54,15 +52,15 @@ export class Runner implements OnInit, OnDestroy {
   private apply(e: LogEvent) {
     const id = JSON.stringify(e.song_id);
     if (e.kind === 'song') {
-      this.rows.update(r => [...r, { id, text: e.text, status: '', tag: null }]);
+      this.items.update(i => [...i, { id, text: e.text, status: '', tag: null }]);
     } else if (e.kind === 'status') {
-      this.rows.update(r => 
-        r.map(row => 
-          row.id === id ? { ...row, status: e.text, tag: e.tag } : row
+      this.items.update(i => 
+        i.map(item => 
+          item.id === id ? { ...item, status: e.text, tag: e.tag } : item
         )
       );
     } else {
-      this.lines.update(l => [...l, e.text]);
+      this.items.update(i => [...i, { id: null, text: e.text, status: '', tag: null }]);
       if (e.text.startsWith('Finished') || e.text.startsWith('Stopped')) this.api.running.set(false);
     }
   }
