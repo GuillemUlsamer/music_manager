@@ -1,4 +1,4 @@
-import { Injectable, inject, Service } from '@angular/core';
+import { Injectable, inject, Service, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
@@ -27,6 +27,7 @@ export interface LogEvent {
 export class Api {
     private http = inject(HttpClient);
     private base = '/api';
+    running = signal(false);
 
     playlists(){
         return this.http.get<Playlist[]>(`${this.base}/playlists`);

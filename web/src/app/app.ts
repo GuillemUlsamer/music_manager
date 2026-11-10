@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component , inject, OnInit} from '@angular/core';
 import { RouterOutlet, RouterLink } from '@angular/router';
+import { Api } from './api';
 
 @Component({
   imports: [RouterOutlet, RouterLink],
@@ -8,4 +9,10 @@ import { RouterOutlet, RouterLink } from '@angular/router';
   templateUrl: './app.html',
 })
 
-export class App {}
+export class App implements OnInit {
+  api = inject(Api);
+
+  ngOnInit() {
+    this.api.status().subscribe(s => this.api.running.set(s.running));
+  }
+}
