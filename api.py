@@ -11,6 +11,7 @@ import manager
 import sheets
 
 app = FastAPI(title="Mulsa")
+_covers = {}  # diccionario de portadas de playlists, para que no se pidan cada vez
 
 # ---------- eventos (SSE) ----------
 # Cada navegador conectado a /events tiene su propia cola. El handler de log.py mete
@@ -53,18 +54,17 @@ def events():
 # responde rapido y Angular pide cada portada por separado con <img src=...>.
 @app.get("/playlists")
 def playlists():
-    return [{"name": p["title"], "cover_url": p["image_url"]} for p in sheets.list_playlists(with_images=False)]
+    result = sheets.list_playlists(with_images=False)
+    _covers.update({p["title"]: p["image_url"] for p in result})
+    return [{"name": p["title"], "cover_url": p["image_url"]} for p in result]
 
 # busca la playlist por su nombre y devuelve la portada
 @app.get("/playlists/{name}/cover")
 def playlist_cover(name: str):
-    for p in sheets.list_playlists(with_images=False):
-        if p["title"] == name:
-            if not p["image_url"]:
-                raise HTTPException(404, "playlist has no cover")
-            else:
-                image_bytes = sheets.fetch_image(p["image_url"])
-                return Response(content=image_bytes, media_type="image/jpeg")
+    url = _covers.get(name)
+    if not url:
+        raise HTTPException(404, "playlist has no cover")
+    return Response(content=sheets.fetch_image(url), media_type="image/jpeg")
 
 # ---------- ejecucion ----------
 _run_thread = None
