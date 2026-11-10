@@ -1,6 +1,5 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { Api } from './api';
 
 @Component({
   imports: [RouterOutlet],
@@ -9,15 +8,4 @@ import { Api } from './api';
   templateUrl: './app.html',
 })
 
-export class App implements OnInit {
-  protected readonly title = signal('web');
-  private api = inject(Api);
-
-  ngOnInit() {
-    this.api.playlists().subscribe(p => {
-      console.log(p);
-    });
-  }
-}
-
-
+export class App {}

@@ -1,0 +1,13 @@
+<button (click)="run('Brain Damage')">Run</button>
+<button (click)="stop()" [disabled]="!running()">Stop</button>
+
+@for (row of rows(); track row.id) {
+    <div class="row">
+        <span>{{ row.text }}</span>
+        <span class="status" [class]="row.tag">{{ row.status }}</span>
+    </div>
+}
+
+@for (line of lines(); track $index) {
+    <div class="line">{{ line }}</div>
+}
