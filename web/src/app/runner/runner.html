@@ -1,17 +1,19 @@
 @if (!api.running()) {
     <button routerLink="/">Playlists</button>
 }
-<button (click)="run('Brain Damage')" [disabled]="api.running()">Run</button>
+<button (click)="run(name())" [disabled]="api.running()">Run</button>
 @if (api.running()) {
     <button (click)="stop()">Stop</button>
 }
 <button (click)="copyLog()" [disabled]="api.running()">Copy Log</button>
 
-@for (i of items(); track $index) {
-    <div class="row" [class]="i.tag">
-        <span>{{ i.text }}</span>
-        @if (i.status) {
-            <span class="status">{{ i.status }}</span>
-        }
-    </div>
-}
+<div class="list" #list>
+    @for (i of items(); track $index) {
+        <div class="row" [class]="i.tag">
+            <span>{{ i.text }}</span>
+            @if (i.status) {
+                <span class="status">{{ i.status }}</span>
+            }
+        </div>
+    }
+</div>

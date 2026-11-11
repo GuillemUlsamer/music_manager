@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, inject, signal, input} from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, input, viewChild, ElementRef, effect} from '@angular/core';
 import { Api, LogEvent } from '../api';
 import { Subscription } from 'rxjs';
 import { RouterLink } from '@angular/router';
@@ -23,6 +23,15 @@ export class Runner implements OnInit, OnDestroy {
   items = signal<Item[]>([]);
   name = input.required<string>();
   private inReview = false;
+  private list = viewChild<ElementRef<HTMLElement>>('list');
+
+  constructor() {
+    effect(() => {
+      this.items();
+      const el = this.list()?.nativeElement;
+      if (el) queueMicrotask(() => el.scrollTop = el.scrollHeight);
+    });
+  }
 
   ngOnInit() {
     this.sub = this.api.events().subscribe(e => { 
