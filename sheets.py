@@ -49,14 +49,12 @@ COVER_CACHE_DIR = bootstrap.CACHE_DIR / 'covers'
 def _read_header(client, spreadsheet_id):
     params = {'valueRenderOption': 'FORMULA'}
     try:
-        data = client.http_client.values_get(spreadsheet_id, 'A1:K2', params=params)
+        data = client.http_client.values_get(spreadsheet_id, 'A2:C2', params=params)
     except AttributeError:
-        data = client.open_by_key(spreadsheet_id).values_get('A1:K2', params=params)
-    rows = data.get('values') or []
-    row1 = rows[0] if len(rows) > 0 else []
-    row2 = rows[1] if len(rows) > 1 else []
-    year = row1[COL_YEAR] if len(row1) > COL_YEAR else ''
-    match = IMAGE_URL_RE.search(row2[2] if len(row2) > 2 else '')
+        data = client.open_by_key(spreadsheet_id).values_get('A2:C2', params=params)
+    row = (data.get('values') or [[]])[0]
+    year = row[1] if len(row) > 1 else ''
+    match = IMAGE_URL_RE.search(row[2] if len(row) > 2 else '')
     return (match.group(1) if match else None), str(year)
 
 def fetch_image(url, timeout=10):
