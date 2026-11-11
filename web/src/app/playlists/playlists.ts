@@ -1,7 +1,6 @@
-import { Component, inject, OnInit} from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { Component, inject, OnInit, signal} from '@angular/core';
 import { RouterLink, Router} from '@angular/router';
-import { Api } from '../api';
+import { Api, Playlist } from '../api';
 
 
 @Component({
@@ -10,17 +9,21 @@ import { Api } from '../api';
   styleUrl: './playlists.scss',
   templateUrl: './playlists.html',
 })
+
 export class Playlists implements OnInit {
   private api = inject(Api);
-  private router = inject(Router);
+  playlists = signal<Playlist[]>([]);
+  loading = signal(false);
 
-  ngOnInit() {
-    this.api.settings().subscribe(s => { if (!s.configured) this.router.navigateByUrl('/settings'); });
+  ngOnInit() { this.load(); }
+
+  load() {
+    this.loading.set(true);
+    this.api.playlists().subscribe({
+      next: p => { this.playlists.set(p); this.loading.set(false); },
+      error: () => this.loading.set(false),
+    });
   }
-
-  // La lista de playists
-  playlists = toSignal(this.api.playlists(), {initialValue: []});
-
   cover(name_playlist: string) {
     return `/api/playlists/${encodeURIComponent( name_playlist )}/cover`;
   }

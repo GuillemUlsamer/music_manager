@@ -1,4 +1,6 @@
 <h1>Playlists</h1>
+<p>{{ playlists().length }} playlists available</p>
+<button (click)="load()" [disabled]="loading()">Refresh</button>
 <div class="grid">
     @for (p of playlists(); track p.name) {
         <a class="card" [routerLink]="['/run', p.name]">
@@ -6,7 +8,7 @@
             <span>{{ p.name }}</span>
         </a>
     }
-    @empty {
+    @if (loading()) {
         <span>Loading playlists from Drive...</span>
     }
 </div>
