@@ -22,6 +22,7 @@ export class Runner implements OnInit, OnDestroy {
   private sub?: Subscription;
   items = signal<Item[]>([]);
   name = input.required<string>();
+  private inReview = false;
 
   ngOnInit() {
     this.sub = this.api.events().subscribe(e => { 
@@ -61,7 +62,9 @@ export class Runner implements OnInit, OnDestroy {
         )
       );
     } else {
-      this.items.update(i => [...i, { id: null, text: e.text, status: '', tag: null }]);
+      if (e.text.startsWith('\nTo review')) this.inReview = true;
+      if (e.text.startsWith('Finished')) this.inReview = false;
+      this.items.update(i => [...i, { id: null, text: e.text, status: '', tag: this.inReview ? 'review' : e.tag }]);
       if (e.text.startsWith('Finished') || e.text.startsWith('Stopped')) this.api.running.set(false);
     }
   }
