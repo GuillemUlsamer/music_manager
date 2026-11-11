@@ -11,6 +11,7 @@ import bootstrap
 import log
 import manager
 import sheets
+import webview
 
 api = FastAPI(title="Mulsa")
 _covers = {}  # diccionario de portadas de playlists, para que no se pidan cada vez
@@ -20,6 +21,8 @@ WEB_DIR = Path(__file__).resolve().parent / 'web' / 'dist' / 'web' / 'browser'
 app = FastAPI()
 app.mount("/api", api)
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+
+window = None  # se setea desde main.py
 
 # ---------- eventos (SSE) ----------
 # Cada navegador conectado a /events tiene su propia cola. El handler de log.py mete
@@ -165,3 +168,17 @@ def save_settings(body: dict):
 
     threading.Thread(target=work, daemon=True).start()
     return {"status": "started"}
+
+@api.post("/pick-folder")
+def pick_folder():
+    if window is None:
+        raise HTTPException(501, "no native window")
+    result = window.create_file_dialog(webview.FOLDER_DIALOG)
+    return {"path": result[0] if result else None}
+
+@api.post("/pick-file")
+def pick_file():
+    if window is None:
+        raise HTTPException(501, "no native window")
+    result = window.create_file_dialog(webview.OPEN_DIALOG, file_types=("JSON (*.json)",))
+    return {"path": result[0] if result else None}

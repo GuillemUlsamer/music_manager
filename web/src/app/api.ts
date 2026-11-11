@@ -50,7 +50,12 @@ export class Api {
     status(){
         return this.http.get<{running: boolean}>(`${this.base}/status`);
     }
-
+    pickFolder(){
+        return this.http.post<{path: string}>(`${this.base}/pick-folder`, null);
+    }
+    pickFile(){
+        return this.http.post<{path: string}>(`${this.base}/pick-file`, null);
+    }
     events(): Observable<LogEvent> {
         return new Observable(subscriber => {
             const source = new EventSource(`${this.base}/events`);

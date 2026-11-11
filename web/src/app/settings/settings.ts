@@ -41,4 +41,16 @@ export class Settings implements OnInit {
       },
     });
   }
+
+  browse(field: 'music_dir' | 'share_dir' | 'credentials_file') {
+    let req;
+    if (field === 'music_dir' || field === 'share_dir') {
+      req = this.api.pickFolder();
+    } else {
+      req = this.api.pickFile();
+    }
+    req.subscribe(r => {
+      if (r.path) this.form.patchValue({ [field]: r.path });
+    });
+  }
 }
