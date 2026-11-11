@@ -28,6 +28,7 @@ export interface LogEvent {
 export class Api {
     private http = inject(HttpClient);
     private base = '/api';
+    playlistsCache = signal<Playlist[]>([]);
     running = signal(false);
 
     playlists(){

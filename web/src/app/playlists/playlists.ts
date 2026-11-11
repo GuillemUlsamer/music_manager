@@ -12,10 +12,12 @@ import { Api, Playlist } from '../api';
 
 export class Playlists implements OnInit {
   private api = inject(Api);
-  playlists = signal<Playlist[]>([]);
+  playlists = this.api.playlistsCache;
   loading = signal(false);
 
-  ngOnInit() { this.load(); }
+  ngOnInit() { 
+    if (this.playlists().length === 0) this.load();
+  }
 
   load() {
     this.loading.set(true);
@@ -24,6 +26,7 @@ export class Playlists implements OnInit {
       error: () => this.loading.set(false),
     });
   }
+  
   cover(name_playlist: string) {
     return `/api/playlists/${encodeURIComponent( name_playlist )}/cover`;
   }
