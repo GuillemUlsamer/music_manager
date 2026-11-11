@@ -69,7 +69,7 @@ def events():
 def playlists():
     result = sheets.list_playlists(with_images=False)
     _covers.update({p["title"]: p["image_url"] for p in result})
-    return [{"name": p["title"], "cover_url": p["image_url"]} for p in result]
+    return [{"name": p["title"], "cover_url": p["image_url"], "year": p["year"]} for p in result]
 
 # busca la playlist por su nombre y devuelve la portada
 @api.get("/playlists/{name}/cover")

@@ -1,14 +1,25 @@
-<h1>Playlists</h1>
-<p>{{ playlists().length }} playlists available</p>
-<button (click)="load()" [disabled]="loading()">Refresh</button>
+<header class="top">
+    <div>  
+        <h1>Playlists</h1>
+        <p class="available">{{ playlists().length }} playlists available</p>
+    </div>
+    <button class="btn" routerLink="/settings">Settings</button>
+</header>
+
+<p class="hint">Choose a playlist to download</p>
+
 <div class="grid">
     @for (p of playlists(); track p.name) {
         <a class="card" [routerLink]="['/run', p.name]">
             <img [src]="cover(p.name)" [alt]="p.name" />
-            <span>{{ p.name }}</span>
+            <div class="text">
+                <span class="name">{{ p.name }}</span>
+                <span class="sub">{{ p.year }}</span>
+            </div>
         </a>
     }
-    @if (loading()) {
-        <span>Loading playlists from Drive...</span>
-    }
 </div>
+
+<footer class="bottom">
+  <button class="btn" (click)="load()" [disabled]="loading()">Refresh</button>
+</footer>

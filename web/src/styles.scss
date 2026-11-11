@@ -1,1 +1,11 @@
-/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+body { margin: 0; font-family: 'Inter', sans-serif; background: #F9F9FA; color: #1E1E1E; }
+
+// Buttons
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 8px; height: 32px; font: inherit; font-size: 16px; line-height: 1;
+  background: #CDCDCD; border: 1px solid #767676; border-radius: 8px; cursor: pointer;
+  &:disabled { opacity: .5; cursor: default; }
+}

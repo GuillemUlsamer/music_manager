@@ -46,15 +46,18 @@ IMAGE_URL_RE = re.compile(r'=IMAGE\(\s*"([^"]+)"', re.IGNORECASE)
 
 COVER_CACHE_DIR = bootstrap.CACHE_DIR / 'covers'
 
-def _read_cover_url(client, spreadsheet_id):
+def _read_header(client, spreadsheet_id):
     params = {'valueRenderOption': 'FORMULA'}
     try:
-        data = client.http_client.values_get(spreadsheet_id, 'C2', params=params) # donde está la portada
-    except AttributeError:   # gspread < 6
-        data = client.open_by_key(spreadsheet_id).values_get('C2', params=params)
-    values = data.get('values') or [['']]
-    match = IMAGE_URL_RE.search(values[0][0] or '')
-    return match.group(1) if match else None
+        data = client.http_client.values_get(spreadsheet_id, 'A1:K2', params=params)
+    except AttributeError:
+        data = client.open_by_key(spreadsheet_id).values_get('A1:K2', params=params)
+    rows = data.get('values') or []
+    row1 = rows[0] if len(rows) > 0 else []
+    row2 = rows[1] if len(rows) > 1 else []
+    year = row1[COL_YEAR] if len(row1) > COL_YEAR else ''
+    match = IMAGE_URL_RE.search(row2[2] if len(row2) > 2 else '')
+    return (match.group(1) if match else None), str(year)
 
 def fetch_image(url, timeout=10):
     COVER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -71,11 +74,11 @@ def list_playlists(with_images=True, workers=8):
     if not client:
         return []
     files = sorted(client.list_spreadsheet_files(), key=lambda f: f['name'].lower())
-    playlists = [{'title': f['name'], 'id': f['id'], 'image_url': None, 'image': None} for f in files]
+    playlists = [{'title': f['name'], 'id': f['id'], 'image_url': None, 'image': None, 'year': ''} for f in files]
 
     def fill(p):
         try:
-            p['image_url'] = _read_cover_url(client, p['id'])
+            p['image_url'], p['year'] = _read_header(client, p['id'])
             if with_images and p['image_url']:
                 p['image'] = fetch_image(p['image_url'])
         except Exception:

@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 export interface Playlist { 
     name: string;
     cover_url: string | null;
+    year: string;
 }
 
 export interface Settings {
