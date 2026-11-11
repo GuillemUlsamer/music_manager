@@ -3,15 +3,23 @@ import queue
 import threading
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, Response
+from pathlib import Path
 
 import bootstrap
 import log
 import manager
 import sheets
 
-app = FastAPI(title="Mulsa")
+api = FastAPI(title="Mulsa")
 _covers = {}  # diccionario de portadas de playlists, para que no se pidan cada vez
+
+WEB_DIR = Path(__file__).resolve().parent / 'web' / 'dist' / 'web' / 'browser'
+
+app = FastAPI()
+app.mount("/api", api)
+app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
 
 # ---------- eventos (SSE) ----------
 # Cada navegador conectado a /events tiene su propia cola. El handler de log.py mete
@@ -29,7 +37,7 @@ def _log_handler(kind, song_id, text, tag):
 log.set_handler(_log_handler)
 log.open_file(bootstrap.APP_DIR / 'mulsa.log')
 
-@app.get("/events")
+@api.get("/events")
 def events():
     q = queue.Queue()
     with _clients_lock:
@@ -52,14 +60,14 @@ def events():
 # Ejemplo completo: de aqui copias el patron para el resto.
 # with_images=False porque la imagen va por su propio endpoint (abajo); asi la lista
 # responde rapido y Angular pide cada portada por separado con <img src=...>.
-@app.get("/playlists")
+@api.get("/playlists")
 def playlists():
     result = sheets.list_playlists(with_images=False)
     _covers.update({p["title"]: p["image_url"] for p in result})
     return [{"name": p["title"], "cover_url": p["image_url"]} for p in result]
 
 # busca la playlist por su nombre y devuelve la portada
-@app.get("/playlists/{name}/cover")
+@api.get("/playlists/{name}/cover")
 def playlist_cover(name: str):
     url = _covers.get(name)
     if not url:
@@ -69,7 +77,7 @@ def playlist_cover(name: str):
 # ---------- ejecucion ----------
 _run_thread = None
 
-@app.post("/run/{name}")
+@api.post("/run/{name}")
 def run(name: str):
     global _run_thread
     if _run_thread and _run_thread.is_alive():
@@ -78,23 +86,23 @@ def run(name: str):
     _run_thread.start()
     return {"status": "started"}
 
-@app.post("/stop")
+@api.post("/stop")
 def stop():
     manager.stop_manager()
     return {"status": "stopping"}
 
-@app.get("/status")
+@api.get("/status")
 def status():
     return {"running": bool(_run_thread and _run_thread.is_alive())}
 
-@app.get("/log")
+@api.get("/log")
 def full_log():
     detailed = (bootstrap.APP_DIR / 'mulsa.log').read_text(encoding='utf-8')
     return Response(content=log.summary_text() + "\n\n----- detailed -----\n" + detailed, media_type="text/plain")
 
 # ---------- settings ----------
 # get de los settings
-@app.get("/settings")
+@api.get("/settings")
 def get_settings():
     configured = bootstrap.is_configured()
     if bootstrap.CONFIG_FILE.exists():
@@ -117,7 +125,7 @@ def get_settings():
     }
 
 # post de los settings
-@app.post("/settings")
+@api.post("/settings")
 def save_settings(body: dict):
     # saco los datos del body
     user = body.get("soulseek_username", "").strip()
