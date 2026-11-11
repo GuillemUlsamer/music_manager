@@ -1,6 +1,7 @@
 import json
 import queue
 import threading
+import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +17,8 @@ import webview
 api = FastAPI(title="Mulsa")
 _covers = {}  # diccionario de portadas de playlists, para que no se pidan cada vez
 
-WEB_DIR = Path(__file__).resolve().parent / 'web' / 'dist' / 'web' / 'browser'
+BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+WEB_DIR = BASE_DIR / 'web' / 'dist' / 'web' / 'browser'
 
 app = FastAPI()
 app.mount("/api", api)

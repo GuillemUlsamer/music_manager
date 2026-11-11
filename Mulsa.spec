@@ -9,10 +9,10 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['gui.py'],
+    ['main.py'],
     pathex=[],
     binaries=binaries,
-    datas=datas,
+    datas=datas + [('assets', 'assets'), ('web/dist/web/browser','web/dist/web/browser')],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
