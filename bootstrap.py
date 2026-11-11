@@ -144,7 +144,7 @@ searches:
     SLSKD_APP_DIR.mkdir(parents=True, exist_ok=True)
     SLSKD_YML.write_text(yml, encoding='utf-8')
 
-def run_setup(username, password, music_dir, share_dir=None, credentials_src=None, progress=print, listen_port=LISTEN_PORT):
+def run_setup(username, password, music_dir, share_dir=None, credentials_file=None, progress=print, listen_port=LISTEN_PORT):
     """Ejecuta todos los pasos. `progress` recibe mensajes de estado (str)."""
     music_dir = Path(music_dir)
 
@@ -154,9 +154,9 @@ def run_setup(username, password, music_dir, share_dir=None, credentials_src=Non
     if share_dir and not Path(share_dir).is_dir():
         raise RuntimeError(f"Shared folder does not exist: {share_dir}")
 
-    if credentials_src and Path(credentials_src) != CREDENTIALS_FILE:
+    if credentials_file and Path(credentials_file) != CREDENTIALS_FILE:
         progress("Copying credentials.json...")
-        shutil.copyfile(credentials_src, CREDENTIALS_FILE)
+        shutil.copyfile(credentials_file, CREDENTIALS_FILE)
     if not CREDENTIALS_FILE.exists():
         raise RuntimeError("credentials.json is missing (Google service account).")
 

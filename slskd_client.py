@@ -81,14 +81,20 @@ def ensure_slskd():
         log.line("Starting slskd...")
         proc = subprocess.Popen([exe, '--app-dir', app_dir], creationflags=subprocess.CREATE_NO_WINDOW)
 
-    for _ in range(60):
-        time.sleep(1)
-        try:
-            if slskd_logged_in():
-                log.line("slskd connected to Soulseek.")
-                return proc
-        except requests.exceptions.ConnectionError:
-            continue
+    try:
+        for _ in range(60):
+            check_stop()
+            time.sleep(1)
+            try:
+                if slskd_logged_in():
+                    log.line("slskd connected to Soulseek.")
+                    return proc
+            except requests.exceptions.ConnectionError:
+                continue
+    except SystemExit:
+        if proc:
+            proc.terminate()
+        raise
     if proc:
         proc.terminate()
     raise SystemExit("slskd did not connect to Soulseek within 60 seconds.")

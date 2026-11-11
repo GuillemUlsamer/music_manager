@@ -1,0 +1,12 @@
+<h1>Playlists</h1>
+<div class="grid">
+    @for (p of playlists(); track p.name) {
+        <a class="card" [routerLink]="['/run', p.name]">
+            <img [src]="cover(p.name)" [alt]="p.name" />
+            <span>{{ p.name }}</span>
+        </a>
+    }
+    @empty {
+        <span>Loading playlists from Drive...</span>
+    }
+</div>
