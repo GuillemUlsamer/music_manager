@@ -1,25 +1,25 @@
 <header class="top">
-    <div>  
-        <h1>Playlists</h1>
-        <p class="available">{{ playlists().length }} playlists available</p>
-    </div>
+    <h1>Playlists</h1>
     <button class="btn" routerLink="/settings">Settings</button>
 </header>
 
-<p class="hint">Choose a playlist to download</p>
 
-<div class="grid">
-    @for (p of playlists(); track p.name) {
-        <a class="card" [routerLink]="['/run', p.name]">
-            <img [src]="cover(p.name)" [alt]="p.name" />
-            <div class="text">
-                <span class="name">{{ p.name }}</span>
-                <span class="sub">{{ p.year }}</span>
-            </div>
-        </a>
-    }
-</div>
+<main class="content">
+    <p class="hint">Choose a playlist to download</p>
+    <div class="grid">
+        @for (p of playlists(); track p.name) {
+            <a class="card" [routerLink]="['/run', p.name]">
+                <img [src]="cover(p.name)" [alt]="p.name" />
+                <div class="text">
+                    <span class="name">{{ p.name }}</span>
+                    <span class="sub">{{ p.year }}</span>
+                </div>
+            </a>
+        }
+    </div>
+</main>
 
 <footer class="bottom">
-  <button class="btn" (click)="load()" [disabled]="loading()">Refresh</button>
+    <p class="available">{{ playlists().length }} playlists available</p>
+    <button class="btn" (click)="load()" [disabled]="loading()">Refresh</button>
 </footer>
